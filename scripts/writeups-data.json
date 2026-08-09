@@ -1,0 +1,135 @@
+{
+  "_metadata": {
+    "generatedAt": "2026-08-08",
+    "sources": [
+      {"url": "https://xz.aliyun.com/news/92224", "status": "success", "title": "2026第十届御网杯网络安全挑战赛线上赛wp"},
+      {"url": "https://blog.xmcve.com/2024/11/04/%E5%BC%BA%E7%BD%91%E6%9D%AF2024-Writeup/", "status": "success", "title": "强网杯2024 Writeup"},
+      {"url": "https://www.cnblogs.com/trunk/p/19190796", "status": "success", "title": "2025qwb 线上赛wp"},
+      {"url": "https://mp.weixin.qq.com/s/Xajw97LI6_nXURhDur1Y6A", "status": "failed", "reason": "微信公众号文章需要认证，无法直接抓取"},
+      {"url": "https://github.com/shuhuNB515/shu-CTF-blog/tree/main", "status": "no_writeups", "reason": "该仓库为博客网站源码（Vue+Flask博客系统），不包含CTF Writeup文件"}
+    ]
+  },
+  "competitions": [
+    {
+      "name": "2026御网杯网络安全挑战赛",
+      "description": "2026年第十届御网杯网络安全挑战赛线上赛，由Narcissu战队提供AK Writeup，覆盖Reverse、Web方向。密码学ECB题目未给出wp。",
+      "year": 2026
+    },
+    {
+      "name": "强网杯2024",
+      "description": "2024年强网杯全国网络安全挑战赛，由星盟安全团队提供Writeup，覆盖PWN方向。",
+      "year": 2024
+    },
+    {
+      "name": "2025强网杯线上赛",
+      "description": "2025年第九届强网杯全国网络安全挑战赛线上赛，覆盖MISC和PWN方向。",
+      "year": 2025
+    }
+  ],
+  "challenges": [
+    {
+      "title": "CrackMe_1_3.apk",
+      "type": "逆向",
+      "difficulty": "中等",
+      "content": "# CrackMe_1_3.apk\n\n## 文件格式分析\n拿到题目，是个apk文件，用JEB定位主函数MainActivity，发现校验逻辑是藏在native层的libmyapplication.so库。这里基本是干扰项。\n\nabc函数基本是干扰项。只有 `this.binding.btnVerify.setOnClickListener((View v) -> this.a(v));` 是真正的校验。\n\n## IDA静态分析\n解压apk文件，提取so库，然后拖入IDA中静态分析。\n\n导出表里能看到：\n- `Java_com_cr_myapplication_MainActivity_stringFromJNI`（@0x24a00）—— 反编译发现只是返回 \"Hello from C++\"，干扰项。\n- `JNI_OnLoad`（@0x24f80）—— 真正入口。\n\n跟进 JNI_OnLoad → 调 sub_25070：读 off_57214 这个 JNINativeMethod[3]（每项 3 个指针）：\n\n| name | signature | fnPtr |\n|---|---|---|\n| a | ([B)[B | 0x25110 |\n| b | ([B)[B | 0x25250 |\n| c | (Ljava/lang/String;)Z | 0x25390 |\n\n签名 (Ljava/lang/String;)Z（String→boolean）的 c 就是校验函数。\n\n## 校验函数逻辑\n- `sub_27590` 是 bytes→hex：查表 byte_F371 = \"0123456789abcdef\"（小写），每字节 push_back(table[b>>4]); push_back(table[b&0xF])。\n- `sub_27760` 是字符串比较。\n- 目标是个 `std::array<std::string,8>`，地址 0x5A1CC。\n\n## 核心变换 ChaCha20\n`sub_257A0`：典型的 64 字节分块、计数器逐块自增的流密码。再看 keystream 生成器 `sub_26D20`：quarter-round `sub_27200` 旋转量 16 / 12 / 8 / 7，字读写 `sub_271C0`/`sub_27310` 为小端。\n\n→ 这就是标准 ChaCha20（RFC 8439），唯一\"非标\"是块计数器从 1 开始（不是 0）。\n\n## 解密\n校验逻辑：`hex(ChaCha20_XOR(flag)) == target_hex`。由于 XOR 流密码自反（同 key/nonce/counter），所以：\n`flag = ChaCha20_keystream(counter=1) XOR unhex(target_hex)`\n\n**flag{b527e2621131134ec22251cfbca75e8c9f5ae4f41371871fd55911927f66a1b4}**",
+      "tags": ["Android", "JNI", "Native", "ChaCha20", "流密码", "IDA"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "CrackMe_2_2.apk",
+      "type": "逆向",
+      "difficulty": "中等",
+      "content": "# CrackMe_2_2.apk\n\n## 文件格式分析\n拿到题目，apk框架。扔JEB里面找到主函数进行反编译。\n\nnative 方法在整个 MainActivity 里从未被调用。onCreate 只调了 `b()`。所有真正的逻辑都集中在 `b()` 方法里。\n\n## b() 在做什么？ —— 动态加载 dex\n结论：真正的输入框、校验按钮、校验逻辑全部都在 `classes3.dex` 里的 `com.cr.test.wide` 类中。\n\n## 校验逻辑定位\nJEB里面的classes3.dex函数。发现校验最终落在 libcrackme2.so 的 `Java_com_cr_crackme2_MainActivity_verifyFlag` 层。\n\n## 调试so库\n解压apk文件IDA调试so库，定位校验函数。\n\n看懂 verifyFlag（0x240f0）逐个看子函数：\n\n① `sub_24440` = PKCS#7 填充（块大小 8）：注意：当 len 已是 8 的倍数时，pad = 8，会补满一整块 8 个0x08（标准 PKCS#7 行为）。\n\n② `des_ecb_encrypt`：把 ptr 用 key \"12345678\" 做 DES-ECB，输出到 ptr_1。\n\n③ `bytesToHex`（bytesToHex(unsigned char*, int)，返回 std::string）：标准 bytes→hex。注意 verifyFlag 的反编译里把长度参数显示丢了，但实际调用是 bytesToHex(sret=v10, data=ptr, len)，hex 的对象是 ptr（填充后的明文），不是 ptr_1（DES 密文）。\n\n④ `sub_24510`：std::string 比较。\n\n## 关键陷阱：DES 是幌子\nptr_1（DES 密文）算出来后直接被 free，全程没参与任何比较。也就是说 \"12345678\" + DES 是纯干扰（red herring）。真正的判定是：**hex(PKCS7_pad(flag)) == 目标串**。\n\n## 解题\n直接对目标 hex 解码，再剥掉 PKCS#7 填充即可。\n\n**flag{HNCTF62RDYNTFMZ1TF}**",
+      "tags": ["Android", "JNI", "DES", "PKCS7", "动态加载dex", "IDA"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "py_obf_10.pyc",
+      "type": "逆向",
+      "difficulty": "简单",
+      "content": "# py_obf_10.pyc\n\n## 文件格式分析\n拿到题目，发现是个pyc文件。使用pycds工具将他转成汇编语言。\n\n## pyc反汇编\n用VSCode打开，发现有些部分字符串乱码。直接丢给AI让它帮我们修复。\n\n## 还原py代码\n还原成py代码就是逻辑超级简单，一遍过的逆向题目。\n\n## flag解密\n直接解密即可。\n\n**flag{ddvo0ing-xv38-rr8e-3i27-vyhlqsb08llv}**",
+      "tags": ["Python", "pyc", "字节码逆向", "pycds"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "rerere.exe",
+      "type": "逆向",
+      "difficulty": "简单",
+      "content": "# rerere.exe\n\n## 查壳\nPE 文件，查壳。无壳。\n\n| 项 | 值 |\n|---|---|\n| 文件 | rerere.exe |\n| 架构 | x86-64 PE (image base 0x140000000) |\n| 编译器 | GCC (GNU) 15.1.0 / MinGW-w64 |\n| MD5 | 2b493f3ccbf3db74e21fa4f4ba8ec33b |\n| SHA-256 | a3475477f494e2066aad95c1b42e823d1d81d21aa6fce07cc3da2cf032b0f4bb |\n\n## IDA静态分析\n对字符串 \"Input: \"（0x140004000）做交叉引用，落在 sub_1400014FB（即 main）：flag 长度固定 38，由 sub_140001480 校验。\n\n## 加密逻辑\n`sbox[ input[i] ^ key[i & 7] ] == target[i]` (i = 0..37)\n\n## 解密\nS盒替换逆向，根据target反推input。\n\n**flag{1470e2b8be617231cef8d657f4a1cba2}**",
+      "tags": ["Windows", "PE", "S盒", "x86-64", "MinGW", "IDA"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "OA System Portal",
+      "type": "WEB",
+      "difficulty": "简单",
+      "content": "# OA System Portal\n\n## 漏洞概述\n这是一个 PHP 文件包含题，核心代码可通过 `php://filter` 读出：\n\n```php\nmodule = isset($_GET['module']) ? $_GET['module'] : 'public_notices.php';\nmodule = str_replace('../', '', module);\ninclude(module);\n```\n\n程序只过滤了 `../`，没有禁止绝对路径和 PHP stream wrapper，因此可以读取源码并进一步尝试包含敏感文件。\n\n## 利用步骤\n1. 先使用 `php://filter` 读取 index.php 源码。\n2. 源码确认 `include(module)` 可直接包含用户传入路径后，尝试常见 flag 路径，`/flag.txt` 命中。\n\n## flag\n**flag{486494bb06932e628c595d285df9eae9}**",
+      "tags": ["PHP", "文件包含", "LFI", "php://filter", "路径穿越"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "WEB-PHP_Payment",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "# WEB-PHP_Payment\n\n## 漏洞概述\n分析优惠券接口时发现用户可控数据被直接反序列化。\n\n继续查看 `tmp/ctf_src/src/models.php:12`，发现 `PromoManager` 的析构函数会在请求结束时把 `promo_credit` 加入当前 session 余额。\n\n`tmp/ctf_src/src/buy.php:34` 中购买 flag 需要 99999 金币，初始余额只有 20。因此只要伪造一个 `PromoManager` 对象，并把 `promo_credit` 设置成足够大的数字，就可以在请求结束时自动给当前 session 加钱。\n\n## 利用步骤\n1. 需要注意余额存在 `$_SESSION['balance']` 里，所以领取优惠券和购买 flag 必须使用同一个 PHPSESSID。\n2. 构造序列化对象，Base64编码。\n3. 先访问首页获取自己的 PHPSESSID。\n4. 用同一个 session 调用 apply_coupon.php，虽然只返回 \"Coupon processed.\"，但请求结束时析构函数会执行，把余额写入 session。\n5. 用同一个 session 调用 /buy.php 购买 flag。\n\n**flag{4eab66d7fffeba5ede642960f36c0100}**",
+      "tags": ["PHP", "反序列化", "析构函数", "Session", "业务逻辑"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "WEB-Snake_Game",
+      "type": "WEB",
+      "difficulty": "简单",
+      "content": "# WEB-Snake_Game\n\n## 漏洞概述\n进入游戏后开启 Burp Suite 抓包，观察提交分数的请求。\n\n题目校验点在分数参数上，服务端会根据提交的分数判断是否回显 flag。\n\n## 利用步骤\n1. 直接在 Burp Suite 中修改数据包，把提交分数改成大于 300 的数值。\n2. 放行修改后的请求，页面返回 flag。\n\n该题为典型的前端校验绕过，分数验证完全在服务端但未做完整性校验。",
+      "tags": ["前端校验", "Burp Suite", "参数篡改", "游戏题"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "WEB-TaxSystem_SSTI",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "# WEB-TaxSystem_SSTI\n\n## 源码分析\n- `ctf_vam/SRC/init_db.py:36` 写死了账号密码：`admin / 123456`\n- `ctf_vam/SRC/app.py:53` 的 `/api/import` 允许当前用户更新 state、custom_footer 等字段，但没有做状态流转校验。\n- `ctf_vam/SRC/app.py:79` 中，只要 profile 的 state == AUDIT_PENDING，就会把 custom_footer 直接拼进 template_html，再交给 render_template_string() 渲染，形成 SSTI。\n\n## 防护与绕过\n黑名单拦截了 `__`、`.`、引号、request、session、system 等字符串，但 `{{config}}` 不在黑名单中，并且 Flask 模板上下文默认可以访问 config。\n\n`ctf_vam/SRC/app.py:160` 的 `/admin/vault` 只检查 `session['role'] == 'tax_inspector'`。因此拿到真实 SECRET_KEY 后，即可伪造 Flask session 访问后台金库。\n\n## 利用步骤\n1. 先用源码中的账号登录：`admin / 123456`\n2. 调用 `/api/create_profile` 创建自己的档案。\n3. 调用 `/api/import`，把该 profile 改成待审计状态并写入 SSTI payload：`{ state: 'AUDIT_PENDING', custom_footer: '{{config}}' }`\n4. 访问 `/preview/<profile_id>`，页面回显 Flask 配置，获取远端真实 SECRET_KEY：`secret_tax_key_2026_xoxo`\n5. 注意远端真实 key 和本地默认 key 不一样，不能直接使用源码默认值伪造。用获取到的 SECRET_KEY 伪造 session `role=tax_inspector`，访问 `/admin/vault` 获取最终 flag。",
+      "tags": ["Flask", "SSTI", "Jinja2", "Session伪造", "SECRET_KEY", "Python"],
+      "competitionName": "2026御网杯网络安全挑战赛"
+    },
+    {
+      "title": "chat_with_me",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# chat_with_me\n\n## 漏洞分析\n程序存在任意地址 free，并且可以泄漏堆、栈信息。\n\n## 利用思路\n1. 通过申请大量 message 可以将存储 message 数组的 chunk 大于 0x410。\n2. 利用任意地址 free 掉 message 数组，这样 message 数组头就会携带上 libc 信息，因此可以通过使用 show 功能泄漏 libc 地址。\n3. 利用任意地址 free 在 IO 缓冲区处构造 tcache hijacking：\n   - 首先在IO 缓冲区构造 size 为 0x31 的 chunk，并将其 free 掉。\n   - 随后修改该 chunk 的 size 为 0x101 同时劫持 tcache->next。\n   - 下次输入的时候将该 chunk 拿出，随后其会被释放到 0x101 的 tcache 中。\n   - 此时 0x31 的 tcache 即为我们劫持的地址，最后一次输入的时候构造 ROP 链即可。\n\n## 注意事项\n远程环境和本地环境堆布局略有差异，需要使用一些侧信道的方法泄漏出其对应的偏移，比如根据堆的布局进行 chunk 进行 free，观测程序是否崩溃。\n\n## 关键代码\n```python\n#!/usr/bin/env python3\nfrom pwn import *\ncontext.clear(arch='amd64', os='linux', log_level='debug')\nsh = remote('47.93.15.136', 34850)\n# ...\n# 利用任意地址free在IO缓冲区构造tcache hijacking\n# 最终用ROP链执行 system(\"/bin/sh\")\n```",
+      "tags": ["Heap", "tcache", "hijacking", "任意地址free", "ROP", "libc泄漏"],
+      "competitionName": "强网杯2024"
+    },
+    {
+      "title": "prpr",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# prpr\n\n## 漏洞概述\n通过注册一系列printf处理函数来实现了一个虚拟机。\n\n虚拟机指令片段在0x3140处，共250条指令。功能有6个：\n1. 输入数据到 `global->memory[mem_idx]`，并与一个 char 数据进行与运算\n2. 依次输入数据，并与一个 int 数据进行与运算\n3. 异或运算（类似功能1）\n4. 依次异或（类似功能2）\n5. 或运算（类似功能1）\n6. 依次或运算（类似功能2）\n\n## 漏洞点\n`mem_and`、`mem_xor`、`mem_or` 这三个函数循环的终止条件不正确。如果字符串没有被 `\\0` 截断，则循环将继续进行，进而覆盖后面的数据。memory结构体数据区大小为0x100，继续向下可以覆盖 `return_addr`，在返回时会用到，即有机会控制pc指针。\n\n## 利用思路\n1. 先调用功能4（依次异或）把memory的buf填满（因为内存偏移问题）。\n2. 然后调用功能3触发循环未截断的漏洞去覆盖return_addr为50（call 60地址）。\n3. 上下文r5为0x40，通过`call 60`函数中的`push getint()`可以实现pc任意可控。\n4. 将pc偏移指向可控区，伪造一系列虚拟机指令结构体：\n   - 先泄漏堆地址和ELF地址\n   - 读入第二阶段虚拟机指令（因为大小不够，分段读入执行）\n5. 第二阶段：通过改写 `regs` 指针并结合 `push_r` 实现任意地址读，泄漏environ得到栈地址。\n6. 第三阶段：利用 `pop_r` 进行任意地址写改写栈，`pop rsp; ret` 到ROP中执行。\n\n## 技术要点\n- glibc 2.39环境\n- 通过虚拟机指令结构体伪造实现漏洞利用\n- 三段式利用：信息泄漏 → 任意地址读 → 任意地址写 → ROP",
+      "tags": ["VM Escape", "printf", "虚拟机", "ROP", "glibc 2.39", "任意地址读写"],
+      "competitionName": "强网杯2024"
+    },
+    {
+      "title": "谍影重重 6.0",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "# 谍影重重 6.0\n\n## 题目概述\n一个流量分析题目，需要从pcap文件中提取音频数据并分析隐藏信息。\n\n## 流量分析\n- 观察data包头 `80007651995957c3884819ee` 这段数据，识别为RTP协议。\n- 使用 `tshark -r Data.pcap -T fields -e data > Data.txt` 将data全部提取出来。\n- 清理全空的0xff字符，减少数据量。\n\n## 音频转码\nRTP payload是G.711 μ-law编码的音频数据。使用查找表将8位的μ-law字节解码为16位的线性采样值：\n\n```python\n_ULAW_DECODE_TABLE = [ ... ]\ndef decode_ulaw_to_pcm16(ulaw_data):\n    pcm_frames = []\n    for ulaw_byte in ulaw_data:\n        pcm_sample = _ULAW_DECODE_TABLE[ulaw_byte]\n        pcm_frames.append(struct.pack('<h', pcm_sample))\n    return b''.join(pcm_frames)\n```\n\n参数配置：\n- CHANNELS = 1\n- SAMPWIDTH = 2 (16-bit)\n- FRAMERATE = 8000\n\n根据SSRC对RTP包进行分组，分别导出为WAV文件，并合并为完整音频。\n\n## 语音识别\n使用FunASR进行语音识别（本地部署速度快）。音频内容为AI生成的随机文本，但可疑点明显：\n\n发现一段数字序列：\n> 六 五 一 四 六 六 三 一 四 五 一 四 二 七 一 六 一 六 六 一 四 二 一 四 六 六 零 七 六 一 四 五 六 六 六 一 六 零 一 四 一 一 四 五 一 四 二 六 零 七 一 一 四 六 六 六 六 零 一 四 二 一 四 三 七 一 六 五 六 五 一 四 二 一 四 四 七 零\n\n转化为数字串：`651466314514271616614214660701456661601411451426071146666014214371656514214470`\n\n## 八进制解码\n范围是0-7，用动态规划算法切成若干个长度为 2 或 3 的八进制段寻找可能的解：\n\n```python\ns = \"651466314514271616614214660701456661601411451426071146666014214371656514214470\"\nfrom functools import lru_cache\n@lru_cache(None)\ndef dp(i):\n    if i == len(s): return [[]]\n    res = []\n    for l in (2, 3):\n        if i + l <= len(s):\n            part = s[i:i+l]\n            val = int(part, 8)\n            if 32 <= val <= 126:\n                for tail in dp(i + l):\n                    res.append([val] + tail)\n    return res\n```\n\n解码后得到压缩包密码，解压得到一段音频对话。\n\n## 社会工程学分析\n对话内容提到\"廿四\"（24日）、\"辰时正\"（8时）、\"三刻\"（45分）、\"双鲤湖西岸南山茶铺\"（福建金门），结合1949年10月24日金门战役：\n\n`1949年10月24日8时45分于双鲤湖西岸南山茶铺`\n\n取MD5后即为flag。",
+      "tags": ["流量分析", "RTP", "G.711", "μ-law", "语音识别", "FunASR", "八进制", "动态规划", "社工"],
+      "competitionName": "2025强网杯线上赛"
+    },
+    {
+      "title": "adventure",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# adventure\n\n## 题目概述\n一个文字冒险游戏题，含有多个命令（shop/skills/explore/upgrade/inv/stat/fight/battle/look/map/quest/move/search/rest/quit/exit/go/missions等）。\n\n## 漏洞发现\n1. **整数溢出漏洞**：在shop中购买商品时，计算价格使用有符号整数 `v17 = 数量 * 1 * 单价`，4号商品单价0x100、最大购买数量8500599，计算结果0x81b57800会溢出为负数，实现负数金币（实际是获得大量金币）。\n\n2. **堆漏洞**：击败Dragon's Peak的龙怪后获得魔戒，在inventory中查看魔戒description时存在漏洞：\n   - 输入0x40字节会覆盖魔戒结构体中的description指针 → **任意地址读**\n   - 写入新description时从同一指针写入 → **任意地址写**\n\n## 利用链\n1. 利用整数溢出购买大量炸弹（500000个即可击败龙怪）\n2. 击败龙怪获取魔戒，卖掉后再买回可再次使用\n3. 任意地址读泄漏加密后的堆地址（glibc 2.32+ 使用 `stored = real_ptr ^ (real_ptr >> 12)` 加密）\n4. 堆地址解密：当堆块相近时，`pos >> 12 == real_ptr >> 12`，可使用 `x = s ^ (s >> 12) ^ (s >> 24) ^ ...` 解密\n5. 泄漏栈地址，继而泄漏libc基址\n6. 控制返回地址做栈迁移到堆中，打ORW读flag\n\n## 沙盒\n白名单沙盒，只能使用open/read/write，需要打ORW链。\n\n## 关键代码\n```python\ndef calc_heap(addr):\n    s = hex(addr)[2:]\n    s = [int(x, base=16) for x in s]\n    res = s.copy()\n    for i in range(9):\n        res[3+i] ^= res[i]\n    res = \"\".join([hex(x)[2:] for x in res])\n    return int(res, 16)\n```",
+      "tags": ["游戏题", "整数溢出", "堆利用", "任意地址读写", "ORW", "栈迁移", "glibc 2.32+", "safe-linking"],
+      "competitionName": "2025强网杯线上赛"
+    },
+    {
+      "title": "LegacyOLED",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "# LegacyOLED\n\n## 题目概述\n一个硬件信号分析题，从逻辑分析仪捕捉的信号中还原OLED屏幕显示内容。\n\n## 信号识别\n- 双信号，大部分规律是只有在时钟低电平时数据才变化，高电平不变化 → 判断为I2C协议。\n- 用I2C解释器发现数据格式：开始信号 → 8位地址+读写 → ACK → 8位数据 → ACK。\n\n## 数据提取\n1. 从PulseView提取解码后的I2C数据（对第二行右键提取数据，第一行是bit）。\n2. 编写脚本清洗数据，提取SSD1306设备（地址0x3C）的数据事务。\n\n## SSD1306协议解析\n根据SSD1306 datasheet编写解析脚本：\n- 控制字节0x40表示数据写入模式\n- 支持三种寻址模式：Page/ Vertical/ Horizontal\n- 指令如：0xAF(Display ON)、0xA1(Horizontal Flip)、0xC8(Scan Reverse)、0xB0~0xB7(Set Page)、0x21(Set Column)、0x22(Set Page address)、0x8D(Charge pump)等\n\n```python\nimport numpy as np\nfrom PIL import Image\narr = np.zeros((64, 128, 3), dtype=np.uint8)\n# 解析I2C数据，按SSD1306协议逐帧渲染\nfor line in open(\"annotations\"):\n    if \"Data write\" in line:\n        # 提取数据\n    if \"Stop\" in line:\n        # 完成一帧，保存图片\n        image = Image.fromarray(arr)\n        image.save(f\"result-{j}.png\")\n```\n\n## Flag提取\n生成1000多张图片后，在第1090张左右发现特殊图片。使用zsteg检测发现隐藏数据，提取得到flag。",
+      "tags": ["I2C", "SSD1306", "OLED", "硬件安全", "信号分析", "PulseView", "zsteg", "隐写"],
+      "competitionName": "2025强网杯线上赛"
+    }
+  ]
+}

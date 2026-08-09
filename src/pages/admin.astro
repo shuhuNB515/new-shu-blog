@@ -1,0 +1,686 @@
+---
+export const prerender = false;
+
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getBlogDB, getCTFDB, getAnalyticsDB, getFriendsDB } from "@/lib/db";
+
+const blogDB = getBlogDB();
+const ctfDB = getCTFDB();
+const analyticsDB = getAnalyticsDB();
+const friendsDB = getFriendsDB();
+const totalPV = analyticsDB.pageViews.reduce((s, p) => s + p.count, 0);
+---
+
+<MainGridLayout title="管理后台" description="网站管理后台">
+  <div class="admin-page" id="adminApp">
+    <div class="admin-header">
+      <h1>管理后台</h1>
+      <div class="admin-actions">
+        <span class="admin-user">shuhu</span>
+        <a href="/api/auth/logout/" class="admin-logout">退出</a>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="blog">博客文章 ({blogDB.posts.length})</button>
+      <button class="admin-tab" data-tab="ctf">CTF题目 ({ctfDB.challenges.length})</button>
+      <button class="admin-tab" data-tab="friends">友链管理 ({friendsDB.links.length})</button>
+      <button class="admin-tab" data-tab="analytics">访问统计 (PV: {totalPV})</button>
+    </div>
+
+    <!-- Blog Tab -->
+    <div class="admin-panel active" id="panel-blog">
+      <div class="panel-actions">
+        <h3>添加文章 (MD文件)</h3>
+        <div class="upload-area" id="blogUpload">
+          <input type="file" id="mdFile" accept=".md" style="display:none" />
+          <label for="mdFile" class="upload-label">选择 .md 文件上传</label>
+          <input type="text" id="blogTitle" placeholder="文章标题（若不填则用文件名）" class="admin-input" />
+          <input type="text" id="blogTags" placeholder="标签，逗号分隔" class="admin-input" />
+          <button class="admin-btn primary" onclick="uploadBlogPost()">发布文章</button>
+        </div>
+      </div>
+
+      <!-- 博客编辑表单 -->
+      <div id="blogEditForm" style="display:none" class="edit-form">
+        <h4>编辑文章</h4>
+        <input type="text" id="blogEditTitle" placeholder="标题" class="admin-input" style="width:100%;margin-bottom:0.5rem;box-sizing:border-box" />
+        <textarea id="blogEditContent" rows="15" class="admin-textarea"></textarea>
+        <input type="text" id="blogEditTags" placeholder="标签，逗号分隔" class="admin-input" style="width:100%;margin-bottom:0.5rem;box-sizing:border-box" />
+        <input type="text" id="blogEditExcerpt" placeholder="摘要" class="admin-input" style="width:100%;margin-bottom:0.5rem;box-sizing:border-box" />
+        <input type="hidden" id="blogEditId" />
+        <div class="form-actions">
+          <button class="admin-btn primary" onclick="saveBlogEdit()">保存</button>
+          <button class="admin-btn" onclick="cancelBlogEdit()">取消</button>
+        </div>
+      </div>
+
+      <div class="post-list" id="blogList">
+        {blogDB.posts.length === 0 ? (
+          <p class="empty-msg">暂无文章</p>
+        ) : (
+          blogDB.posts.map((post) => (
+            <div class="post-item" data-id={post.id}>
+              <div class="post-info">
+                <strong>{post.title}</strong>
+                <span class="post-meta">{post.tags.join(" · ")} | {new Date(post.createdAt).toLocaleDateString("zh-CN")}</span>
+              </div>
+              <div class="post-actions">
+                <button class="admin-btn sm" onclick={`editBlogPost('${post.id}')`}>编辑</button>
+                <button class="admin-btn sm danger" onclick={`deleteBlogPost('${post.id}')`}>删除</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+
+    <!-- CTF Tab -->
+    <div class="admin-panel" id="panel-ctf">
+      <div class="panel-section">
+        <h3>比赛管理</h3>
+        <div class="inline-form">
+          <input type="text" id="compName" placeholder="比赛名称" class="admin-input" />
+          <input type="text" id="compYear" placeholder="年份" class="admin-input sm" />
+          <input type="text" id="compDesc" placeholder="描述" class="admin-input" />
+          <button class="admin-btn primary" onclick="addCompetition()">添加比赛</button>
+        </div>
+        <div class="item-list" id="compList">
+          {ctfDB.competitions.map((c) => (
+            <div class="post-item">
+              <div class="post-info">
+                <strong>{c.name} ({c.year})</strong>
+                <span class="post-meta">{ctfDB.challenges.filter((ch) => ch.competitionId === c.id).length} 题</span>
+              </div>
+              <button class="admin-btn sm danger" onclick={`deleteCompetition('${c.id}')`}>删除</button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>题目管理</h3>
+        <div class="inline-form">
+          <select id="challComp" class="admin-input sm">
+            <option value="">选择比赛</option>
+            {ctfDB.competitions.map((c) => (
+              <option value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <input type="text" id="challTitle" placeholder="题目标题" class="admin-input" />
+          <select id="challType" class="admin-input sm">
+            <option value="WEB">WEB</option>
+            <option value="PWN">PWN</option>
+            <option value="SRC">SRC</option>
+            <option value="逆向">逆向</option>
+            <option value="密码学">密码学</option>
+            <option value="MISC">MISC</option>
+          </select>
+          <select id="challDifficulty" class="admin-input sm">
+            <option value="简单">简单</option>
+            <option value="中等" selected>中等</option>
+            <option value="困难">困难</option>
+          </select>
+          <button class="admin-btn primary" onclick="addChallenge()">添加题目</button>
+        </div>
+        <div id="challEditForm" style="display:none" class="edit-form">
+          <h4>编辑题目内容 (Markdown)</h4>
+          <textarea id="challContent" rows="12" class="admin-textarea"></textarea>
+          <input type="text" id="challTags" placeholder="标签，逗号分隔" class="admin-input" />
+          <input type="text" id="challFlag" placeholder="Flag (可选)" class="admin-input" />
+          <input type="hidden" id="editChallId" />
+          <button class="admin-btn primary" onclick="saveChallengeEdit()">保存</button>
+          <button class="admin-btn" onclick="cancelChallengeEdit()">取消</button>
+        </div>
+        <div class="item-list" id="challList">
+          {ctfDB.challenges.map((ch) => {
+            const comp = ctfDB.competitions.find((c) => c.id === ch.competitionId);
+            return (
+              <div class="post-item" data-id={ch.id}>
+                <div class="post-info">
+                  <strong>[{ch.type}] {ch.title}</strong>
+                  <span class="post-meta">{comp?.name || "未知比赛"} | {ch.difficulty} | {ch.tags.join(" · ")}</span>
+                </div>
+                <div class="post-actions">
+                  <button class="admin-btn sm" onclick={`editChallenge('${ch.id}')`}>编辑</button>
+                  <button class="admin-btn sm danger" onclick={`deleteChallenge('${ch.id}')`}>删除</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+
+    <!-- Friends Tab -->
+    <div class="admin-panel" id="panel-friends">
+      <div class="panel-section">
+        <h3>添加友链</h3>
+        <div class="inline-form">
+          <input type="text" id="fTitle" placeholder="名称 *" class="admin-input sm" />
+          <input type="text" id="fUrl" placeholder="链接 https://... *" class="admin-input" />
+          <input type="text" id="fImg" placeholder="头像URL" class="admin-input" />
+          <input type="text" id="fDesc" placeholder="描述" class="admin-input" />
+          <input type="text" id="fTags" placeholder="标签(逗号分隔)" class="admin-input sm" />
+          <button class="admin-btn primary" onclick="addFriend()">添加友链</button>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>友链列表</h3>
+        <div class="item-list" id="friendList">
+          {friendsDB.links.length === 0 ? (
+            <p class="empty-msg">暂无友链</p>
+          ) : (
+            friendsDB.links.map((l) => (
+              <div class="post-item" data-id={l.id}>
+                <div class="post-info" style="display:flex;align-items:center;gap:0.75rem">
+                  {l.imgurl && <img src={l.imgurl} alt={l.title} style="width:2rem;height:2rem;border-radius:0.4rem;object-fit:cover;flex-shrink:0" />}
+                  <div>
+                    <strong>{l.title}</strong>
+                    <span class="post-meta">{l.siteurl} | {(l.tags || []).join(" · ")}</span>
+                  </div>
+                  <span class={"admin-badge " + (l.enabled ? "" : "off")}>{l.enabled ? "显示" : "隐藏"}</span>
+                </div>
+                <div class="post-actions">
+                  <button class="admin-btn sm" onclick={`editFriend('${l.id}')`}>编辑</button>
+                  <button class="admin-btn sm" onclick={`toggleFriend('${l.id}')`}>{l.enabled ? "隐藏" : "显示"}</button>
+                  <button class="admin-btn sm danger" onclick={`deleteFriend('${l.id}')`}>删除</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics Tab -->
+    <div class="admin-panel" id="panel-analytics">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">{totalPV}</div>
+          <div class="stat-label">总访问量 (PV)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{analyticsDB.visits.length}</div>
+          <div class="stat-label">访问记录数</div>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>页面访问排行</h3>
+        <div class="item-list">
+          {analyticsDB.pageViews.sort((a, b) => b.count - a.count).map((p) => (
+            <div class="post-item">
+              <div class="post-info">
+                <strong>{p.path}</strong>
+              </div>
+              <span class="admin-badge">{p.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>最近访问记录</h3>
+        <div class="item-list">
+          {analyticsDB.visits.slice(-20).reverse().map((v) => (
+            <div class="post-item">
+              <div class="post-info">
+                <strong>{v.path}</strong>
+                <span class="post-meta">IP: {v.ip} | {new Date(v.timestamp).toLocaleString("zh-CN")}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</MainGridLayout>
+
+<script>
+  // ====== Tab Switch ======
+  document.querySelectorAll(".admin-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".admin-tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = (btn as HTMLElement).dataset.tab!;
+      document.querySelectorAll(".admin-panel").forEach((p) => p.classList.remove("active"));
+      document.getElementById(`panel-${tab}`)!.classList.add("active");
+    });
+  });
+
+  // ====== Blog ======
+  (window as any).uploadBlogPost = async () => {
+    const fileInput = document.getElementById("mdFile") as HTMLInputElement;
+    const titleInput = document.getElementById("blogTitle") as HTMLInputElement;
+    const tagsInput = document.getElementById("blogTags") as HTMLInputElement;
+    const file = fileInput.files?.[0];
+    const title = titleInput.value || file?.name.replace(/\.md$/, "") || "";
+
+    const fd = new FormData();
+    if (file) fd.append("file", file);
+    fd.append("title", title);
+    fd.append("tags", tagsInput.value);
+
+    const res = await fetch("/api/blog/posts/", { method: "POST", body: fd });
+    if (res.ok) location.reload();
+    else if (res.status === 401) alert("登录已过期，请重新登录");
+    else {
+      const err = await res.json().catch(() => ({}));
+      alert("发布失败: " + (err.error || "未知错误"));
+    }
+  };
+
+  (window as any).deleteBlogPost = async (id: string) => {
+    if (!confirm("确定删除这篇文章？")) return;
+    const res = await fetch("/api/blog/posts/", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) location.reload();
+    else if (res.status === 401) alert("登录已过期，请重新登录");
+    else alert("删除失败: " + ((await res.json().catch(() => ({}))).error || "未知错误"));
+  };
+
+  (window as any).editBlogPost = async (id: string) => {
+    const form = document.getElementById("blogEditForm")!;
+    // 获取文章完整内容
+    const res = await fetch("/api/blog/posts/");
+    const posts = await res.json();
+    const post = posts.find((p: any) => p.id === id);
+    if (post) {
+      (document.getElementById("blogEditId") as HTMLInputElement).value = id;
+      (document.getElementById("blogEditTitle") as HTMLInputElement).value = post.title;
+      (document.getElementById("blogEditContent") as HTMLTextAreaElement).value = post.content || "";
+      (document.getElementById("blogEditTags") as HTMLInputElement).value = (post.tags || []).join(", ");
+      (document.getElementById("blogEditExcerpt") as HTMLInputElement).value = post.excerpt || "";
+      form.style.display = "block";
+      form.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  (window as any).saveBlogEdit = async () => {
+    const id = (document.getElementById("blogEditId") as HTMLInputElement).value;
+    const title = (document.getElementById("blogEditTitle") as HTMLInputElement).value.trim();
+    const content = (document.getElementById("blogEditContent") as HTMLTextAreaElement).value;
+    const tags = (document.getElementById("blogEditTags") as HTMLInputElement).value;
+    const excerpt = (document.getElementById("blogEditExcerpt") as HTMLInputElement).value.trim();
+    if (!title) return alert("标题不能为空");
+    const res = await fetch("/api/blog/posts/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id, title, content, excerpt,
+        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      }),
+    });
+    if (res.ok) location.reload();
+    else if (res.status === 401) alert("登录已过期，请重新登录");
+    else {
+      const err = await res.json().catch(() => ({}));
+      alert("保存失败: " + (err.error || "未知错误"));
+    }
+  };
+
+  (window as any).cancelBlogEdit = () => {
+    (document.getElementById("blogEditForm") as HTMLElement).style.display = "none";
+  };
+
+  // ====== CTF ======
+  (window as any).addCompetition = async () => {
+    const name = (document.getElementById("compName") as HTMLInputElement).value;
+    const year = (document.getElementById("compYear") as HTMLInputElement).value;
+    const desc = (document.getElementById("compDesc") as HTMLInputElement).value;
+    if (!name) return alert("请输入比赛名称");
+    const res = await fetch("/api/ctf/challenges/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "addCompetition", competition: { name, year: parseInt(year) || undefined, description: desc } }),
+    });
+    if (res.ok) location.reload();
+    else alert("添加失败");
+  };
+
+  (window as any).deleteCompetition = async (id: string) => {
+    if (!confirm("确定删除这个比赛及其所有题目？")) return;
+    await fetch("/api/ctf/challenges/", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deleteCompetition", id }),
+    });
+    location.reload();
+  };
+
+  // Challenge CRUD
+  const allChallenges = JSON.parse(document.querySelector("[data-challenges]")?.textContent || "[]");
+  (window as any).editChallenge = (id: string) => {
+    const form = document.getElementById("challEditForm")!;
+    form.style.display = "block";
+    (document.getElementById("editChallId") as HTMLInputElement).value = id;
+    // Fetch challenge content from server
+    fetch("/api/ctf/challenges/").then(r => r.json()).then(data => {
+      const chall = data.challenges.find((c: any) => c.id === id);
+      if (chall) {
+        (document.getElementById("challContent") as HTMLTextAreaElement).value = chall.content || "";
+        (document.getElementById("challTags") as HTMLInputElement).value = (chall.tags || []).join(", ");
+        (document.getElementById("challFlag") as HTMLInputElement).value = chall.flag || "";
+      }
+    });
+  };
+
+  (window as any).saveChallengeEdit = async () => {
+    const id = (document.getElementById("editChallId") as HTMLInputElement).value;
+    const content = (document.getElementById("challContent") as HTMLTextAreaElement).value;
+    const tags = (document.getElementById("challTags") as HTMLInputElement).value;
+    const flag = (document.getElementById("challFlag") as HTMLInputElement).value;
+    const res = await fetch("/api/ctf/challenges/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "editChallenge",
+        challenge: { id, content, tags: tags.split(",").map((t) => t.trim()).filter(Boolean), flag } }),
+    });
+    if (res.ok) location.reload();
+    else alert("保存失败");
+  };
+
+  (window as any).cancelChallengeEdit = () => {
+    (document.getElementById("challEditForm") as HTMLElement).style.display = "none";
+  };
+
+  (window as any).addChallenge = async () => {
+    const compId = (document.getElementById("challComp") as HTMLSelectElement).value;
+    const title = (document.getElementById("challTitle") as HTMLInputElement).value;
+    const type = (document.getElementById("challType") as HTMLSelectElement).value;
+    const dif = (document.getElementById("challDifficulty") as HTMLSelectElement).value;
+    if (!compId) return alert("请选择比赛");
+    if (!title) return alert("请输入标题");
+    const res = await fetch("/api/ctf/challenges/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "addChallenge",
+        challenge: { competitionId: compId, title, type, difficulty: dif },
+      }),
+    });
+    if (res.ok) location.reload();
+    else alert("添加失败");
+  };
+
+  (window as any).deleteChallenge = async (id: string) => {
+    if (!confirm("确定删除这道题目？")) return;
+    await fetch("/api/ctf/challenges/", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deleteChallenge", id }),
+    });
+    location.reload();
+  };
+
+  // ====== Friends ======
+  (window as any).addFriend = async () => {
+    const title = (document.getElementById("fTitle") as HTMLInputElement).value.trim();
+    const siteurl = (document.getElementById("fUrl") as HTMLInputElement).value.trim();
+    if (!title || !siteurl) return alert("名称和链接为必填项");
+    const imgurl = (document.getElementById("fImg") as HTMLInputElement).value.trim();
+    const desc = (document.getElementById("fDesc") as HTMLInputElement).value.trim();
+    const tags = (document.getElementById("fTags") as HTMLInputElement).value.split(",").map(t => t.trim()).filter(Boolean);
+    const res = await fetch("/api/friends/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", link: { title, siteurl, imgurl: imgurl || "https://weavatar.com/avatar/0?s=128", desc, tags } }),
+    });
+    if (res.ok) location.reload();
+    else alert("添加失败");
+  };
+
+  (window as any).editFriend = async (id: string) => {
+    const res = await fetch("/api/friends/");
+    const data = await res.json();
+    const link = data.links.find((l: any) => l.id === id);
+    if (!link) return;
+    const title = prompt("名称:", link.title);
+    if (!title) return;
+    const siteurl = prompt("链接:", link.siteurl);
+    if (!siteurl) return;
+    const desc = prompt("描述:", link.desc || "");
+    const imgurl = prompt("头像URL:", link.imgurl || "");
+    const tagsStr = prompt("标签(逗号分隔):", (link.tags || []).join(", ")) || "";
+    const tags = tagsStr.split(",").map((t: string) => t.trim()).filter(Boolean);
+    await fetch("/api/friends/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "edit", link: { id, title, siteurl, imgurl, desc, tags } }),
+    });
+    location.reload();
+  };
+
+  (window as any).toggleFriend = async (id: string) => {
+    await fetch("/api/friends/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "toggle", link: { id } }),
+    });
+    location.reload();
+  };
+
+  (window as any).deleteFriend = async (id: string) => {
+    if (!confirm("确定删除这个友链？")) return;
+    await fetch("/api/friends/", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    location.reload();
+  };
+</script>
+
+<style>
+  .admin-page {
+    width: 100%;
+  }
+
+  .admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line-divider);
+  }
+
+  .admin-header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--deep-text);
+    margin: 0;
+  }
+
+  .admin-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .admin-user { color: var(--content-meta); font-size: 0.9rem; }
+  .admin-logout { color: #ff6b6b; text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+  .admin-logout:hover { text-decoration: underline; }
+
+  .admin-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .admin-tab {
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 2rem;
+    background: var(--btn-regular-bg);
+    color: var(--btn-content);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+  .admin-tab:hover { background: var(--btn-regular-bg-hover); }
+  .admin-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  .admin-panel { display: none; }
+  .admin-panel.active { display: block; }
+
+  .panel-section {
+    background: var(--card-bg);
+    border: 1px solid var(--line-divider);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .panel-section h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    color: var(--deep-text);
+  }
+
+  .panel-actions h3 {
+    margin: 0 0 0.5rem;
+    color: var(--deep-text);
+    font-size: 1.05rem;
+  }
+
+  .upload-area {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .upload-label {
+    padding: 0.5rem 1rem;
+    border: 2px dashed var(--line-color);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--content-meta);
+    transition: border-color 0.2s;
+  }
+  .upload-label:hover { border-color: var(--primary); }
+
+  .admin-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 0.4rem;
+    background: var(--btn-regular-bg);
+    color: var(--deep-text);
+    font-size: 0.85rem;
+    outline: none;
+    min-width: 180px;
+  }
+  .admin-input:focus { border-color: var(--primary); }
+  .admin-input.sm { min-width: 100px; }
+  select.admin-input { cursor: pointer; }
+
+  .admin-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 0.4rem;
+    background: var(--btn-regular-bg);
+    color: var(--deep-text);
+    font-size: 0.85rem;
+    outline: none;
+    resize: vertical;
+    font-family: monospace;
+    box-sizing: border-box;
+    margin-bottom: 0.5rem;
+  }
+
+  .admin-btn {
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 0.4rem;
+    background: var(--btn-regular-bg);
+    color: var(--btn-content);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .admin-btn:hover { background: var(--btn-regular-bg-hover); }
+  .admin-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .admin-btn.primary:hover { opacity: 0.9; background: var(--primary); }
+  .admin-btn.danger { border-color: #ff6b6b; color: #ff6b6b; background: transparent; }
+  .admin-btn.danger:hover { background: #ff6b6b; color: #fff; }
+  .admin-btn.sm { padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+
+  .post-list, .item-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+  .post-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--btn-regular-bg);
+    border-radius: 0.5rem;
+    border: 1px solid var(--line-divider);
+    gap: 1rem;
+  }
+  .post-info strong {
+    color: var(--deep-text);
+    font-size: 0.95rem;
+    display: block;
+  }
+  .post-meta {
+    color: var(--content-meta);
+    font-size: 0.8rem;
+  }
+  .post-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+  .inline-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .edit-form {
+    margin: 0.75rem 0;
+    padding: 1rem;
+    background: var(--btn-regular-bg);
+    border-radius: 0.5rem;
+    border: 1px solid var(--primary);
+  }
+  .edit-form h4 { margin: 0 0 0.5rem; color: var(--deep-text); font-size: 0.9rem; }
+
+  .empty-msg { color: var(--content-meta); text-align: center; padding: 2rem; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--line-divider);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
+  .stat-label { color: var(--content-meta); font-size: 0.85rem; margin-top: 0.25rem; }
+
+  .admin-badge {
+    background: var(--primary);
+    color: #fff;
+    padding: 0.25rem 0.6rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .admin-badge.off {
+    background: #ff6b6b;
+  }
+
+  @media (max-width: 640px) {
+    .inline-form { flex-direction: column; }
+    .admin-input { width: 100%; min-width: unset; }
+  }
+</style>

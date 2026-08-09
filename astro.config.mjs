@@ -61,7 +61,7 @@ const adapter = process.env.CF_WORKERS
 	? cloudflare({
 			prerenderEnvironment: "node",
 		})
-	: undefined;
+	: (await import("@astrojs/node")).default({ mode: "standalone" });
 
 // https://astro.build/config
 export default defineConfig({

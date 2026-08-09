@@ -44,3 +44,7 @@ package/
 .codex*
 .claude
 .mimocode
+
+# 敏感文件（切勿推送）
+cookies.txt
+deploy/

@@ -12,6 +12,11 @@ import {
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getFriendsDB, type FriendLink } from "@/lib/db";
+import { isLoggedIn } from "@/lib/auth";
+
+// SSR required for auth check
+export const prerender = false;
 
 // 检查页面是否启用
 if (!siteConfig.pages.friends) {
@@ -32,14 +37,27 @@ const isCommentEnabled =
 	commentConfig.type !== "none" &&
 	friendsPageConfig.showComment !== false;
 
-// 使用配置文件中的友链数据，按权重排序
-const items = getEnabledFriends();
-const allTags = [...new Set(items.flatMap((item) => item.tags || []))].sort();
+// 使用配置文件中的友链数据 + 数据库中的友链数据
+const staticItems = getEnabledFriends();
+const db = getFriendsDB();
+const dynamicItems = db.links.filter((l) => l.enabled);
+
+// 合并：数据库中的友链 + 静态配置的友链（去重按 siteurl）
+const mergedItems = [...dynamicItems];
+for (const s of staticItems) {
+	if (!mergedItems.find((m) => m.siteurl === s.siteurl)) {
+		mergedItems.push(s as unknown as FriendLink);
+	}
+}
+
+const allTags = [...new Set(mergedItems.flatMap((item) => item.tags || []))].sort();
 
 // 页面标题和描述
 const title = friendsPageConfig.title || i18n(I18nKey.friends);
 const description =
 	friendsPageConfig.description || i18n(I18nKey.friendsDescription);
+
+const loggedIn = isLoggedIn(Astro.cookies);
 ---
 
 <MainGridLayout title={title} description={description}>
@@ -70,7 +88,7 @@ const description =
 
       <!-- 搜索框 -->
       {
-        items.length > 0 && (
+        mergedItems.length > 0 && (
           <friend-filter class="mb-6">
             <div class="relative mb-3">
               <Icon is:inline
@@ -107,7 +125,7 @@ const description =
 
       <div class="friends-grid my-4">
         {
-          items.length === 0 && (
+          mergedItems.length === 0 && (
             <div class="col-span-full flex flex-col items-center justify-center py-12 text-neutral-400 dark:text-neutral-500">
               <Icon is:inline name="material-symbols:group-off-outline" class="text-4xl mb-3" />
               <div class="text-sm">{i18n(I18nKey.friendsEmpty)}</div>
@@ -115,7 +133,7 @@ const description =
           )
         }
         {
-          items.map((item) => (
+          mergedItems.map((item) => (
             <a
               href={item.siteurl}
               target="_blank"
@@ -188,6 +206,47 @@ const description =
       </Markdown>
     </div>
   )}
+
+  <!-- 友链管理（仅登录后可见） -->
+  {
+    loggedIn && (
+      <div class="mt-4 card-base z-10 px-9 py-6 relative w-full" id="friends-mgr">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="h-8 w-8 rounded-lg bg-(--primary) flex items-center justify-center text-white">
+            <Icon is:inline name="material-symbols:edit-square-outline" class="text-[1.5rem]" />
+          </div>
+          <div class="text-2xl font-bold text-neutral-900 dark:text-neutral-100">管理友链</div>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-4">
+          <input type="text" id="fTitle" placeholder="名称" class="friend-input" />
+          <input type="text" id="fUrl" placeholder="链接 https://..." class="friend-input" />
+          <input type="text" id="fImg" placeholder="头像URL" class="friend-input" />
+          <input type="text" id="fDesc" placeholder="描述" class="friend-input" />
+          <input type="text" id="fTags" placeholder="标签(逗号分隔)" class="friend-input sm" />
+          <button class="friend-btn primary" id="addFriendBtn">添加友链</button>
+        </div>
+        <div id="dynamicFriendList" class="flex flex-col gap-2">
+          {db.links.map((l) => (
+            <div class="flex items-center justify-between p-2 rounded-lg border border-(--line-divider)" data-id={l.id}>
+              <div class="flex items-center gap-3 min-w-0">
+                <img src={l.imgurl} alt={l.title} class="w-10 h-10 rounded-lg object-cover shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-medium text-sm truncate">{l.title}</div>
+                  <div class="text-xs text-neutral-500 dark:text-neutral-400 truncate">{l.siteurl}</div>
+                </div>
+                <span class={"text-xs px-2 py-0.5 rounded " + (l.enabled ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400")}>{l.enabled ? "显示" : "隐藏"}</span>
+              </div>
+              <div class="flex gap-1 shrink-0">
+                <button class="friend-btn sm" onclick={`editFriendLink('${l.id}')`}>编辑</button>
+                <button class="friend-btn sm" onclick={`toggleFriendLink('${l.id}')`}>{l.enabled ? "隐藏" : "显示"}</button>
+                <button class="friend-btn sm danger" onclick={`deleteFriendLink('${l.id}')`}>删除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   <!-- 评论区 -->
   {isCommentEnabled && (
@@ -285,5 +344,94 @@ const description =
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 0.75rem;
     }
+    .friend-input {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--line-divider);
+      border-radius: 0.5rem;
+      background: var(--btn-regular-bg);
+      color: var(--deep-text);
+      font-size: 0.85rem;
+      outline: none;
+      min-width: 160px;
+    }
+    .friend-input:focus { border-color: var(--primary); }
+    .friend-input.sm { min-width: 120px; max-width: 180px; }
+    .friend-btn {
+      padding: 0.5rem 1.25rem;
+      border: 1px solid var(--line-divider);
+      border-radius: 0.5rem;
+      background: var(--btn-regular-bg);
+      color: var(--btn-content);
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .friend-btn:hover { background: var(--btn-regular-bg-hover); }
+    .friend-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .friend-btn.danger { border-color: #ff6b6b; color: #ff6b6b; background: transparent; }
+    .friend-btn.danger:hover { background: #ff6b6b; color: #fff; }
+    .friend-btn.sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
   </style>
+  <script>
+    // 友链管理功能（需登录）
+    (function() {
+      if (!document.getElementById("friends-mgr")) return;
+
+      const api = "/api/friends/";
+
+      (window as any).addFriendLink = async function() {
+        const title = (document.getElementById("fTitle") as HTMLInputElement)?.value?.trim();
+        const siteurl = (document.getElementById("fUrl") as HTMLInputElement)?.value?.trim();
+        const imgurl = (document.getElementById("fImg") as HTMLInputElement)?.value?.trim();
+        const desc = (document.getElementById("fDesc") as HTMLInputElement)?.value?.trim();
+        const tagsRaw = (document.getElementById("fTags") as HTMLInputElement)?.value?.trim();
+        if (!title || !siteurl) return alert("名称和链接必填");
+        const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : [];
+        await fetch(api, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add", link: { title, siteurl, imgurl: imgurl || "https://weavatar.com/avatar/0?s=128", desc, tags } }),
+        });
+        location.reload();
+      };
+
+      (window as any).editFriendLink = async function(id: string) {
+        const title = prompt("新名称:");
+        if (!title) return;
+        const siteurl = prompt("新链接:");
+        if (!siteurl) return;
+        const desc = prompt("描述:") || "";
+        const imgurl = prompt("头像URL:") || "";
+        const tags = (prompt("标签(逗号分隔):") || "").split(",").map(t => t.trim()).filter(Boolean);
+        await fetch(api, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "edit", link: { id, title, siteurl, imgurl, desc, tags } }),
+        });
+        location.reload();
+      };
+
+      (window as any).toggleFriendLink = async function(id: string) {
+        await fetch(api, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "toggle", link: { id } }),
+        });
+        location.reload();
+      };
+
+      (window as any).deleteFriendLink = async function(id: string) {
+        if (!confirm("确定删除这个友链？")) return;
+        await fetch(api, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        location.reload();
+      };
+
+      document.getElementById("addFriendBtn")?.addEventListener("click", (window as any).addFriendLink);
+    })();
+  </script>
 </MainGridLayout>

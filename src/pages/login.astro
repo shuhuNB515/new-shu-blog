@@ -1,0 +1,158 @@
+---
+export const prerender = false;
+
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+if (Astro.request.method === "POST") {
+  // Handled by middleware redirect
+}
+
+const error = Astro.url.searchParams.get("error");
+---
+
+<MainGridLayout title="登录" description="管理员登录">
+  <div class="login-page">
+    <div class="login-card">
+      <h1 class="login-title">管理员登录</h1>
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input type="text" id="username" name="username" placeholder="请输入用户名" required />
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input type="password" id="password" name="password" placeholder="请输入密码" required />
+        </div>
+        {error && <p class="login-error">{decodeURIComponent(error)}</p>}
+        <p id="loginMsg" class="login-error" style="display:none"></p>
+        <button type="submit" class="login-btn" id="loginBtn">登 录</button>
+      </form>
+    </div>
+  </div>
+</MainGridLayout>
+
+<script>
+  const form = document.getElementById("loginForm") as HTMLFormElement;
+  const msg = document.getElementById("loginMsg") as HTMLElement;
+  const btn = document.getElementById("loginBtn") as HTMLButtonElement;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = "登录中...";
+    msg.style.display = "none";
+
+    const username = (document.getElementById("username") as HTMLInputElement).value;
+    const password = (document.getElementById("password") as HTMLInputElement).value;
+
+    try {
+      const res = await fetch("/api/auth/login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // 延迟 200ms 再跳转，确保浏览器已处理 Set-Cookie 头
+        setTimeout(() => {
+          window.location.href = "/admin/";
+        }, 200);
+      } else {
+        msg.textContent = data.error || "登录失败";
+        msg.style.display = "block";
+      }
+    } catch {
+      msg.textContent = "网络错误，请重试";
+      msg.style.display = "block";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "登 录";
+    }
+  });
+</script>
+
+<style>
+  .login-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem 1rem;
+  }
+
+  .login-card {
+    background: var(--card-bg);
+    border: 1px solid var(--line-divider);
+    border-radius: 1rem;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .login-title {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    color: var(--deep-text);
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--content-meta);
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 0.5rem;
+    background: var(--btn-regular-bg);
+    color: var(--deep-text);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+  }
+
+  .form-group input:focus {
+    border-color: var(--primary);
+  }
+
+  .login-error {
+    color: #ff6b6b;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+
+  .login-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--primary, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .login-btn:hover {
+    opacity: 0.9;
+  }
+
+  .login-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+</style>

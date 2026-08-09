@@ -978,6 +978,18 @@ const hasMultipleImages =
 
 </Layout>
 
+<!-- 访问统计追踪 -->
+<script is:inline data-swup-ignore-script>
+  (function() {
+    var path = window.location.pathname;
+    fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path })
+    }).catch(function(){});
+  })();
+</script>
+
 <style is:global>
   /* 右侧栏平滑过渡 */
   #right-sidebar {

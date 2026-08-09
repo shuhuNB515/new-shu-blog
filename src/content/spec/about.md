@@ -1,29 +1,34 @@
 # 关于我 / About Me
 
-你好！我是 **夏叶** ，一个在数字世界中默默无闻的一片叶子。
+你好！我是 **shu（小鲤鱼）** ，成都理工大学编外人员，一只啥也不会但热爱技术与CTF的菜鸡。
 
-## 🛠️ 关于本站
+## 关于我
 
-这个网站使用 **Astro** 框架构建，采用了 [Firefly](https://github.com/CuteLeaf/Firefly) 模板，Firefly 是基于 [Fuwari](https://github.com/saicaca/fuwari) 的二次开发。
+- Web开发者，熟悉 Vue 3、Python Flask、JavaScript
+- CTF爱好者，主攻 Web安全、逆向工程方向
+- 算法竞赛练习生，刷题中...
+- 热爱开源，喜欢折腾各种技术
 
-**Firefly** 是一款基于 Astro 框架和 Fuwari 模板开发的清新美观且现代化个人博客主题模板，专为技术爱好者和内容创作者设计。该主题融合了现代 Web 技术栈，提供了丰富的功能模块和高度可定制的界面，让您能够轻松打造出专业且美观的个人博客网站。
+## 关于本站
 
+这个网站使用 **Astro** 框架构建，采用了 [Firefly](https://github.com/CuteLeaf/Firefly) 主题模板。
 
-**🖥️在线预览： [Firefly - Demo site](https://firefly.cuteleaf.cn/)**
+博客内容主要涵盖：
 
-**🏠我的博客： [https://blog.cuteleaf.cn](https://blog.cuteleaf.cn/)**
+- **学习笔记**：HTML/CSS、JavaScript、Python、Vue 3 等前端与后端技术
+- **项目经验**：个人博客系统、操作系统内核构建、Linux 发行版制作、AI 语音助手等
+- **算法竞赛**：Python 算法刷题笔记，蓝桥杯备战
+- **CTF Writeup**：Web安全、逆向工程、Misc、密码学、PWN 等方向的解题记录
 
-**📝Firefly使用文档： [https://docs-firefly.cuteleaf.cn](https://docs-firefly.cuteleaf.cn/)**
+## 技能栈
 
-**⭐Firefly开源地址：[https://github.com/CuteLeaf/Firefly](https://github.com/CuteLeaf/Firefly)** 
-
-**⭐Fuwari开源地址：[https://github.com/saicaca/fuwari](https://github.com/saicaca/fuwari)**
-
-::github{repo="CuteLeaf/Firefly"}
-
-::github{repo="saicaca/fuwari"}
+| 类别 | 技术 |
+|------|------|
+| 前端 | Vue 3, Vite, HTML5, CSS3, JavaScript |
+| 后端 | Python Flask, SQLite |
+| 工具 | Git, VS Code, Linux |
+| 安全 | CTF, Web安全, 逆向分析 |
 
 ---
 
 *感谢你的来访！希望在这里能找到对你有用的内容！*
-

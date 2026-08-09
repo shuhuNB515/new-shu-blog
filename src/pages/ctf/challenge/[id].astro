@@ -1,0 +1,276 @@
+---
+export const prerender = false;
+
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getCTFDB, type CTFChallenge, type CTFCompetition } from "@/lib/db";
+
+const { id } = Astro.params;
+
+const db = getCTFDB();
+const challenge = db.challenges.find((c) => c.id === id);
+const competition = challenge
+  ? db.competitions.find((c) => c.id === challenge.competitionId)
+  : null;
+
+if (!challenge) {
+  return Astro.redirect("/ctf/");
+}
+
+const typeColors: Record<string, string> = {
+  WEB: "#ff6b6b",
+  PWN: "#ff922b",
+  SRC: "#845ef7",
+  "逆向": "#ffd93d",
+  "密码学": "#4d96ff",
+  MISC: "#6bcb77",
+};
+
+const difficultyColors: Record<string, string> = {
+  "简单": "#6bcb77",
+  "中等": "#ffd93d",
+  "困难": "#ff6b6b",
+};
+
+// Simple markdown-to-HTML conversion (basic)
+function simpleMarkdown(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/### (.+)/g, '<h3 class="md-h3">$1</h3>')
+    .replace(/## (.+)/g, '<h2 class="md-h2">$1</h2>')
+    .replace(/# (.+)/g, '<h1 class="md-h1">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+    .replace(/^- (.+)/gm, '<li class="md-li">$1</li>')
+    .replace(/```(\w+)?\n?([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre class="md-code-block"><code class="language-${lang || 'text'}">${code.trim()}</code></pre>`
+    )
+    .replace(/\n\n/g, '</p><p class="md-p">')
+    .replace(/^(.+)/gm, (line: string) => {
+      if (line.startsWith('<')) return line;
+      if (line.trim() === '') return '';
+      return `<p class="md-p">${line}</p>`;
+    });
+}
+---
+
+<MainGridLayout title={`${challenge.title} - CTF Writeup`} description={`${competition?.name || ""} - ${challenge.type} - ${challenge.difficulty}`}>
+  <div class="challenge-detail">
+    <!-- 面包屑 -->
+    <div class="breadcrumb">
+      <a href="/ctf/">CTF</a>
+      <span class="breadcrumb-sep">/</span>
+      {competition && (
+        <>
+          <span>{competition.name}</span>
+          <span class="breadcrumb-sep">/</span>
+        </>
+      )}
+      <span class="breadcrumb-current">{challenge.title}</span>
+    </div>
+
+    <!-- 题目头部 -->
+    <div class="chall-hero">
+      <div class="chall-meta">
+        <span class="chall-type-badge" style={`background: ${typeColors[challenge.type] || "#888"}20; color: ${typeColors[challenge.type] || "#888"}; border-color: ${typeColors[challenge.type] || "#888"}`}>
+          {challenge.type}
+        </span>
+        <span class="chall-diff-badge" style={`background: ${difficultyColors[challenge.difficulty] || "#888"}20; color: ${difficultyColors[challenge.difficulty] || "#888"}; border-color: ${difficultyColors[challenge.difficulty] || "#888"}`}>
+          {challenge.difficulty}
+        </span>
+        {competition && (
+          <span class="chall-comp-info">{competition.name} ({competition.year})</span>
+        )}
+      </div>
+      <h1 class="chall-title">{challenge.title}</h1>
+      {challenge.tags.length > 0 && (
+        <div class="chall-tags">
+          {challenge.tags.map((tag: string) => (
+            <span class="chall-tag">{tag}</span>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- 题目内容 -->
+    <div class="chall-content markdown-body">
+      <Fragment set:html={simpleMarkdown(challenge.content)} />
+    </div>
+
+    <!-- 返回 -->
+    <div class="chall-footer">
+      <a href="/ctf/" class="back-btn">← 返回 CTF 列表</a>
+    </div>
+  </div>
+</MainGridLayout>
+
+<style>
+  .challenge-detail {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--content-meta);
+    flex-wrap: wrap;
+  }
+
+  .breadcrumb a {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .breadcrumb a:hover {
+    text-decoration: underline;
+  }
+
+  .breadcrumb-sep {
+    color: var(--content-meta);
+  }
+
+  .breadcrumb-current {
+    color: var(--deep-text);
+    font-weight: 500;
+  }
+
+  .chall-hero {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--line-divider);
+  }
+
+  .chall-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .chall-type-badge,
+  .chall-diff-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.7rem;
+    border-radius: 0.3rem;
+    border: 1px solid;
+    font-weight: 500;
+  }
+
+  .chall-comp-info {
+    font-size: 0.85rem;
+    color: var(--content-meta);
+  }
+
+  .chall-title {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0 0 0.75rem;
+    color: var(--deep-text);
+    line-height: 1.3;
+  }
+
+  .chall-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .chall-tag {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--btn-content);
+    font-weight: 500;
+  }
+
+  /* Content */
+  .chall-content {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--deep-text);
+  }
+
+  .chall-content :global(.md-h1) {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 1.5rem 0 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chall-content :global(.md-h2) {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.6rem;
+  }
+
+  .chall-content :global(.md-h3) {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 1rem 0 0.5rem;
+  }
+
+  .chall-content :global(.md-p) {
+    margin: 0.5rem 0;
+  }
+
+  .chall-content :global(.md-li) {
+    margin-left: 1.5rem;
+    list-style: disc;
+  }
+
+  .chall-content :global(.md-inline-code) {
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .chall-content :global(.md-code-block) {
+    background: var(--page-bg);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .chall-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line-divider);
+    text-align: center;
+  }
+
+  .back-btn {
+    display: inline-block;
+    padding: 0.6rem 1.5rem;
+    border: 1px solid var(--line-divider);
+    border-radius: 0.5rem;
+    color: var(--btn-content);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s;
+  }
+
+  .back-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  @media (max-width: 640px) {
+    .chall-title {
+      font-size: 1.4rem;
+    }
+  }
+</style>

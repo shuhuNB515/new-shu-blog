@@ -1,0 +1,462 @@
+---
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getCTFDB, type CTFChallenge, type CTFCompetition } from "@/lib/db";
+
+const db = getCTFDB();
+const competitions = db.competitions;
+const challenges = db.challenges;
+
+// Challenge type display info
+const typeInfo: Record<string, { label: string; color: string; icon: string }> = {
+  WEB: { label: "WEB", color: "#ff6b6b", icon: "🌐" },
+  PWN: { label: "PWN", color: "#ff922b", icon: "💣" },
+  SRC: { label: "SRC", color: "#845ef7", icon: "🔍" },
+  "逆向": { label: "逆向", color: "#ffd93d", icon: "🔧" },
+  "密码学": { label: "密码学", color: "#4d96ff", icon: "🔐" },
+  MISC: { label: "MISC", color: "#6bcb77", icon: "🧩" },
+};
+
+const difficultyColors: Record<string, string> = {
+  "简单": "#6bcb77",
+  "中等": "#ffd93d",
+  "困难": "#ff6b6b",
+};
+
+function challengesByCompetition(competitionId: string): CTFChallenge[] {
+  return challenges.filter((c) => c.competitionId === competitionId);
+}
+
+function challengesByType(type: string): CTFChallenge[] {
+  return challenges.filter((c) => c.type === type);
+}
+
+const challengeTypes = db.types || ["WEB", "PWN", "SRC", "逆向", "密码学", "MISC"];
+---
+
+<MainGridLayout title="CTF Writeup" description="网络安全竞赛解题记录 — 按比赛和题型分类浏览">
+  <div class="ctf-page" id="ctf-app">
+    <div class="ctf-header">
+      <h1 class="ctf-title">CTF Writeup</h1>
+      <p class="ctf-subtitle">网络安全竞赛解题记录 — 记录每一次翻车和偶尔的灵光一现</p>
+      <div class="ctf-login-area" id="ctfLoginArea">
+        <a href="/login/" class="ctf-login-btn" id="ctfLoginLink">🔐 登录管理</a>
+      </div>
+    </div>
+
+    <!-- Tab切换 -->
+    <div class="ctf-tabs">
+      <button type="button" class="ctf-tab active" id="ctfTabCompetition" onclick="document.querySelectorAll('.ctf-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.ctf-view').forEach(v=>v.classList.remove('active'));document.getElementById('ctfViewCompetition').classList.add('active')">
+        <span class="tab-icon">🏆</span> 按比赛
+      </button>
+      <button type="button" class="ctf-tab" id="ctfTabType" onclick="document.querySelectorAll('.ctf-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.ctf-view').forEach(v=>v.classList.remove('active'));document.getElementById('ctfViewType').classList.add('active')">
+        <span class="tab-icon">📂</span> 按类型
+      </button>
+    </div>
+
+    <!-- 按比赛 -->
+    <div class="ctf-view active" id="ctfViewCompetition" data-ctf-view="competition">
+      {
+        competitions.length === 0 ? (
+          <p class="ctf-empty">暂无比赛数据</p>
+        ) : (
+          competitions.map((comp: CTFCompetition) => {
+            const compChalls = challengesByCompetition(comp.id);
+            if (compChalls.length === 0) return null;
+            return (
+              <div class="competition-section">
+                <h2 class="comp-name">
+                  <span class="comp-icon">🏁</span>
+                  {comp.name}
+                  <span class="comp-count">{compChalls.length} 题</span>
+                </h2>
+                {comp.description && (
+                  <p class="comp-desc">{comp.description}</p>
+                )}
+                <div class="challenge-grid">
+                  {compChalls.map((chall: CTFChallenge) => (
+                    <a href={`/ctf/challenge/${chall.id}/`} class="challenge-card-link">
+                      <div class="challenge-card">
+                        <div class="chall-header">
+                          <span
+                            class="chall-type-badge"
+                            style={`background: ${typeInfo[chall.type]?.color || "#888"}20; color: ${typeInfo[chall.type]?.color || "#888"}; border-color: ${typeInfo[chall.type]?.color || "#888"}`}
+                          >
+                            {typeInfo[chall.type]?.icon} {typeInfo[chall.type]?.label || chall.type}
+                          </span>
+                          <span
+                            class="chall-difficulty"
+                            style={`color: ${difficultyColors[chall.difficulty] || "#888"}`}
+                          >
+                            {chall.difficulty}
+                          </span>
+                        </div>
+                        <h3 class="chall-title">{chall.title}</h3>
+                        {chall.tags.length > 0 && (
+                          <div class="chall-tags">
+                            {chall.tags.map((tag: string) => (
+                              <span class="chall-tag">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div class="chall-arrow">→</div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )
+      }
+    </div>
+
+    <!-- 按类型 -->
+    <div class="ctf-view" id="ctfViewType" data-ctf-view="type">
+      {
+        challengeTypes.map((type: string) => {
+          const typeChalls = challengesByType(type);
+          if (typeChalls.length === 0) return null;
+          const info = typeInfo[type] || { label: type, color: "#888", icon: "📝" };
+          return (
+            <div class="competition-section">
+              <h2 class="comp-name">
+                <span class="comp-icon">{info.icon}</span>
+                {info.label}
+                <span class="comp-count">{typeChalls.length} 题</span>
+              </h2>
+              <div class="challenge-grid">
+                {typeChalls.map((chall: CTFChallenge) => {
+                  const comp = competitions.find((c) => c.id === chall.competitionId);
+                  return (
+                    <a href={`/ctf/challenge/${chall.id}/`} class="challenge-card-link">
+                      <div class="challenge-card">
+                        <div class="chall-header">
+                          {comp && (
+                            <span class="chall-comp-badge">{comp.name}</span>
+                          )}
+                          <span
+                            class="chall-difficulty"
+                            style={`color: ${difficultyColors[chall.difficulty] || "#888"}`}
+                          >
+                            {chall.difficulty}
+                          </span>
+                        </div>
+                        <h3 class="chall-title">{chall.title}</h3>
+                        {chall.tags.length > 0 && (
+                          <div class="chall-tags">
+                            {chall.tags.map((tag: string) => (
+                              <span class="chall-tag">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div class="chall-arrow">→</div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
+      }
+    </div>
+  </div>
+</MainGridLayout>
+
+<!-- 检查登录状态 -->
+<script>
+  (function checkLogin() {
+    // 检查 token cookie 是否存在
+    var hasToken = document.cookie.indexOf("token=") !== -1;
+    var area = document.getElementById("ctfLoginArea");
+    if (hasToken && area) {
+      area.innerHTML = '<a href="/admin/" class="ctf-login-btn ctf-admin-btn">⚙️ 管理</a> ' +
+        '<a href="/api/auth/logout" class="ctf-login-btn ctf-logout-btn">🚪 退出</a>';
+    }
+  })();
+</script>
+
+<style>
+  .ctf-page {
+    width: 100%;
+  }
+
+  .ctf-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .ctf-title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--primary), #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .ctf-subtitle {
+    color: var(--content-meta) !important;
+    font-size: 1.1rem;
+  }
+
+  .ctf-login-btn {
+    display: inline-block;
+    margin-top: 0.75rem;
+    padding: 0.5rem 1.5rem;
+    border: 1px solid var(--primary) !important;
+    border-radius: 2rem;
+    color: var(--primary) !important;
+    background: var(--card-bg) !important;
+    text-decoration: none !important;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s;
+  }
+
+  .ctf-login-btn:hover {
+    background: var(--primary) !important;
+    color: #fff !important;
+  }
+
+  .ctf-login-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .ctf-user-info {
+    color: var(--content-meta) !important;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .ctf-logout-btn {
+    border-color: #ff6b6b !important;
+    color: #ff6b6b !important;
+  }
+
+  .ctf-logout-btn:hover {
+    background: #ff6b6b !important;
+    color: #fff !important;
+  }
+
+  .ctf-admin-btn {
+    border-color: var(--primary, #6366f1) !important;
+    color: var(--primary, #6366f1) !important;
+  }
+
+  .ctf-admin-btn:hover {
+    background: var(--primary, #6366f1) !important;
+    color: #fff !important;
+  }
+
+  /* Tabs */
+  .ctf-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .ctf-tab {
+    padding: 0.65rem 1.5rem;
+    border-radius: 2rem;
+    border: 2px solid var(--line-divider) !important;
+    background: var(--card-bg) !important;
+    color: var(--btn-content) !important;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ctf-tab:hover {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: var(--btn-card-bg-hover) !important;
+  }
+
+  .ctf-tab.active {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #fff !important;
+    font-weight: 600;
+  }
+
+  .tab-icon {
+    font-size: 1rem;
+  }
+
+  /* Views */
+  .ctf-view {
+    display: none;
+  }
+
+  .ctf-view.active {
+    display: block;
+  }
+
+  .ctf-empty {
+    text-align: center;
+    color: var(--content-meta) !important;
+    padding: 3rem;
+    font-size: 1.1rem;
+  }
+
+  /* Competition Section */
+  .competition-section {
+    margin-bottom: 2.5rem;
+  }
+
+  .comp-name {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--deep-text) !important;
+  }
+
+  .comp-icon {
+    font-size: 1.5rem;
+  }
+
+  .comp-count {
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-left: auto;
+    background: var(--primary) !important;
+    color: #fff !important;
+    padding: 0.25rem 0.8rem;
+    border-radius: 1rem;
+  }
+
+  .comp-desc {
+    color: var(--content-meta) !important;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    margin-left: 2.1rem;
+  }
+
+  /* Challenge Grid */
+  .challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+
+  .challenge-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+
+  /* Challenge Card */
+  .challenge-card {
+    background: var(--card-bg) !important;
+    border: 1px solid var(--line-divider) !important;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .challenge-card:hover {
+    border-color: var(--primary) !important;
+    background: var(--btn-card-bg-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  .chall-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .chall-type-badge {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 0.3rem;
+    border: 1px solid;
+    font-weight: 600;
+  }
+
+  .chall-comp-badge {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--line-divider, rgba(0, 0, 0, 0.12)) !important;
+    color: var(--text-secondary, #666) !important;
+    font-weight: 500;
+  }
+
+  .chall-difficulty {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .chall-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--deep-text) !important;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .chall-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .chall-tag {
+    font-size: 0.78rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.3rem;
+    background: var(--btn-regular-bg) !important;
+    color: var(--btn-content) !important;
+    font-weight: 500;
+  }
+
+  .chall-arrow {
+    position: absolute;
+    top: 50%;
+    right: 1.25rem;
+    transform: translateY(-50%);
+    font-size: 1.3rem;
+    color: var(--primary) !important;
+    opacity: 0;
+    transition: all 0.3s;
+  }
+
+  .challenge-card:hover .chall-arrow {
+    opacity: 1;
+    right: 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .ctf-title {
+      font-size: 1.8rem;
+    }
+    .challenge-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
